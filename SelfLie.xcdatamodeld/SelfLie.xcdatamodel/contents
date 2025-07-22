@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="22758" systemVersion="23F79" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="Affirmation" representedClassName="Affirmation" syncable="YES">
+        <attribute name="audioFileName" optional="NO" attributeType="String"/>
+        <attribute name="dateCreated" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="repeatCount" optional="NO" attributeType="Integer 32" defaultValue="0" usesScalarValueType="YES"/>
+        <attribute name="targetCount" optional="NO" attributeType="Integer 32" defaultValue="1000" usesScalarValueType="YES"/>
+        <attribute name="text" optional="NO" attributeType="String"/>
+    </entity>
+</model>

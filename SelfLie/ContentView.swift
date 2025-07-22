@@ -6,19 +6,30 @@
 //
 
 import SwiftUI
+import CoreData
 
 struct ContentView: View {
+    @State private var navigationCoordinator = NavigationCoordinator()
+    
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        NavigationStack(path: $navigationCoordinator.path) {
+            DashboardView()
+                .navigationDestination(for: NavigationDestination.self) { destination in
+                    switch destination {
+                    case .addAffirmation:
+                        AddAffirmationView()
+                    case .recording(let text):
+                        RecordingView(affirmationText: text)
+                    case .practice(let affirmation):
+                        PracticeView(affirmation: affirmation)
+                    }
+                }
         }
-        .padding()
+        .environment(navigationCoordinator)
     }
 }
 
 #Preview {
     ContentView()
+        .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
