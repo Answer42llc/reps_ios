@@ -13,6 +13,7 @@ struct PracticeView: View {
     @State private var showingError = false
     @State private var errorMessage = ""
     @State private var similarity: Float = 0.0
+    @State private var silentRecordingDetected = false
     
     private var practiceURL: URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -31,14 +32,22 @@ struct PracticeView: View {
                 analysisView
             }
             
+            if practiceState == .completed {
+                actionButtons
+            }
+            
             Spacer()
             
-            cantSpeakButton
+            if practiceState != .completed {
+                cantSpeakButton
+            }
         }
         .padding()
         .foregroundColor(.white)
-        .task {
-            await startPracticeFlow()
+        .onAppear {
+            Task {
+                await startPracticeFlow()
+            }
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK") {
@@ -76,7 +85,7 @@ struct PracticeView: View {
             practiceIcon
             practiceStatusText
             
-            if practiceState == .completed && similarity > 0 {
+            if practiceState == .completed && !silentRecordingDetected && similarity > 0 {
                 successFeedback
             }
         }
@@ -95,10 +104,6 @@ struct PracticeView: View {
                     .foregroundColor(.blue)
                     .scaleEffect(1.1)
                     .animation(.easeInOut(duration: 1).repeatForever(), value: practiceState == .playing)
-            case .promptingRecording:
-                Image(systemName: "mic.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.green)
             case .recording:
                 Image(systemName: "mic.circle.fill")
                     .font(.system(size: 80))
@@ -123,20 +128,38 @@ struct PracticeView: View {
             case .initial:
                 Text("Starting practice session...")
             case .playing:
-                Text("Listen to your affirmation")
-            case .promptingRecording:
-                Text("Speak this words again")
-                    .fontWeight(.bold)
-                    .foregroundColor(.green)
+                VStack(spacing: 4) {
+                    Text("Listen carefully")
+                        .font(.headline)
+                    Text("Pay attention to your voice")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
             case .recording:
-                Text("Recording your voice...")
+                VStack(spacing: 4) {
+                    Text("Now speak aloud")
+                        .font(.headline)
+                    Text("Repeat the affirmation clearly")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
             case .analyzing:
                 Text("Verifying your speech...")
             case .completed:
-                Text(similarity >= 0.8 ? "Perfect! Count increased" : "Practice complete")
+                if silentRecordingDetected {
+                    VStack(spacing: 4) {
+                        Text("No voice detected")
+                            .font(.headline)
+                            .foregroundColor(.orange)
+                        Text("Please speak clearly during recording")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                    }
+                } else {
+                    Text(similarity >= 0.8 ? "Excellent! You did great!" : "Keep practicing, you can do better!")
+                }
             }
         }
-        .font(.headline)
         .multilineTextAlignment(.center)
     }
     
@@ -187,62 +210,132 @@ struct PracticeView: View {
         .cornerRadius(8)
     }
     
+    private var actionButtons: some View {
+        VStack(spacing: 16) {
+            if silentRecordingDetected {
+                Button("Try Speaking Again") {
+                    Task {
+                        await restartPractice()
+                    }
+                }
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color.orange)
+                .cornerRadius(12)
+                
+                Button("Done for Now") {
+                    cleanup()
+                    dismiss()
+                }
+                .font(.subheadline)
+                .foregroundColor(.gray)
+                .padding(.vertical, 8)
+            } else if similarity >= 0.8 {
+                Button("I'm Great! 🎉") {
+                    cleanup()
+                    dismiss()
+                }
+                .font(.headline)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color.green)
+                .cornerRadius(12)
+            } else {
+                Button("Try Again") {
+                    Task {
+                        await restartPractice()
+                    }
+                }
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(Color.blue)
+                .cornerRadius(12)
+                
+                Button("Done for Now") {
+                    cleanup()
+                    dismiss()
+                }
+                .font(.subheadline)
+                .foregroundColor(.gray)
+                .padding(.vertical, 8)
+            }
+        }
+        .padding(.horizontal)
+    }
+    
     private func startPracticeFlow() async {
+        print("🎯 [PracticeView] Starting practice flow for affirmation: '\(affirmation.text)'")
+        
         #if targetEnvironment(simulator)
-        // Simplified simulator flow: just increment count and dismiss
+        print("📱 [PracticeView] Running in simulator mode - skipping actual audio/recording")
+        // Simplified simulator flow: just increment count
         await MainActor.run {
             practiceState = .completed
             similarity = 0.8
             incrementCount()
-            
-            // Auto-dismiss after showing success
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                dismiss()
-            }
         }
         #else
+        print("📱 [PracticeView] Running on real device - requesting permissions")
         // Real device flow with full audio playback and recording
         // Request permissions first
         let microphoneGranted = await audioService.requestMicrophonePermission()
         let speechGranted = await speechService.requestSpeechRecognitionPermission()
         
+        print("🔐 [PracticeView] Permissions - Microphone: \(microphoneGranted), Speech: \(speechGranted)")
+        
         guard microphoneGranted && speechGranted else {
+            print("❌ [PracticeView] Permission denied - cannot proceed with practice")
             showError("Permissions required for practice session")
             return
         }
         
         // Start the automatic flow
+        print("▶️ [PracticeView] Permissions granted - starting audio playback")
         await playAffirmation()
         #endif
     }
     
     private func playAffirmation() async {
-        practiceState = .playing
+        print("🔊 [PracticeView] Starting audio playback stage")
+        await MainActor.run {
+            practiceState = .playing
+            silentRecordingDetected = false
+        }
         
         guard let audioURL = affirmation.audioURL else {
+            print("❌ [PracticeView] Audio URL not found for affirmation")
             showError("Audio file not found")
             return
         }
         
         // Check if file actually exists
         guard FileManager.default.fileExists(atPath: audioURL.path) else {
+            print("❌ [PracticeView] Audio file missing at path: \(audioURL.path)")
             showError("Audio file missing at: \(audioURL.path)")
             return
         }
         
-        print("Attempting to play audio from: \(audioURL.path)")
+        print("🎵 [PracticeView] Playing audio from: \(audioURL.path)")
         
         do {
             try await audioService.playAudio(from: audioURL)
-            await MainActor.run {
-                practiceState = .promptingRecording
-            }
+            print("✅ [PracticeView] Audio playback completed successfully")
             
             // Brief pause before starting recording
-            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            print("⏳ [PracticeView] Waiting 0.5 seconds before starting recording")
+            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             await startRecording()
             
         } catch {
+            print("❌ [PracticeView] Audio playback failed: \(error.localizedDescription)")
             await MainActor.run {
                 showError("Failed to play audio: \(error.localizedDescription)")
             }
@@ -250,25 +343,35 @@ struct PracticeView: View {
     }
     
     private func startRecording() async {
-        practiceState = .recording
+        print("🎤 [PracticeView] Starting recording stage")
+        await MainActor.run {
+            practiceState = .recording
+        }
         
         do {
             // Start recording audio
+            print("📹 [PracticeView] Starting audio recording to: \(practiceURL.path)")
             try await audioService.startRecording(to: practiceURL)
             
             // Start real-time speech recognition simultaneously
+            print("🗣️ [PracticeView] Starting speech recognition for text: '\(affirmation.text)'")
             try speechService.startRecognition(expectedText: affirmation.text)
             
             // Auto-stop after 10 seconds or when user stops speaking
+            print("⏱️ [PracticeView] Recording will auto-stop after 10 seconds")
             try await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds max
             
             if audioService.isRecording {
+                print("🛑 [PracticeView] Stopping recording after 10 seconds timeout")
                 audioService.stopRecording()
                 speechService.stopRecognition()
                 await analyzeRecording()
+            } else {
+                print("ℹ️ [PracticeView] Recording was already stopped")
             }
             
         } catch {
+            print("❌ [PracticeView] Failed to start recording: \(error.localizedDescription)")
             await MainActor.run {
                 showError("Failed to start recording: \(error.localizedDescription)")
             }
@@ -276,38 +379,44 @@ struct PracticeView: View {
     }
     
     private func analyzeRecording() async {
-        practiceState = .analyzing
+        print("🔍 [PracticeView] Starting speech analysis stage")
+        await MainActor.run {
+            practiceState = .analyzing
+        }
         
         // Use the real-time recognized text
         let recognizedText = speechService.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        print("🎯 Expected: '\(affirmation.text)'")
-        print("✅ Recognized: '\(recognizedText)'")
+        print("🎯 [PracticeView] Expected text: '\(affirmation.text)'")
+        print("✅ [PracticeView] Recognized text: '\(recognizedText)'")
         
         if recognizedText.isEmpty {
+            print("🔇 [PracticeView] No speech detected during recording")
             await MainActor.run {
-                showError("No speech was recognized. Please try speaking more clearly.")
+                silentRecordingDetected = true
+                practiceState = .completed
             }
             return
         }
         
         // Calculate similarity using embedding-based comparison
+        print("📊 [PracticeView] Calculating similarity between expected and recognized text")
         similarity = speechService.calculateSimilarity(expected: affirmation.text, recognized: recognizedText)
         
-        print("🔍 Calculated similarity: \(similarity)")
+        print("🔍 [PracticeView] Calculated similarity: \(similarity) (threshold: 0.8)")
         
         await MainActor.run {
             practiceState = .completed
             
             if similarity >= 0.8 {
+                print("🎉 [PracticeView] Similarity above threshold - incrementing count")
                 incrementCount()
-            }
-            
-            // Auto-dismiss after showing result
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                dismiss()
+            } else {
+                print("📈 [PracticeView] Similarity below threshold - encouraging retry")
             }
         }
+        
+        print("✅ [PracticeView] Speech analysis completed")
     }
     
     private func incrementCount() {
@@ -325,20 +434,37 @@ struct PracticeView: View {
         showingError = true
     }
     
+    private func restartPractice() async {
+        print("🔄 [PracticeView] Restarting practice session")
+        cleanup()
+        await MainActor.run {
+            similarity = 0.0
+            silentRecordingDetected = false
+        }
+        await startPracticeFlow()
+    }
+    
     private func cleanup() {
+        print("🧹 [PracticeView] Cleaning up audio services and temp files")
         audioService.stopRecording()
         audioService.stopPlayback()
         speechService.stopRecognition()
         
         // Clean up temporary recording file
-        try? FileManager.default.removeItem(at: practiceURL)
+        if FileManager.default.fileExists(atPath: practiceURL.path) {
+            do {
+                try FileManager.default.removeItem(at: practiceURL)
+                print("🗑️ [PracticeView] Cleaned up temporary recording file: \(practiceURL.path)")
+            } catch {
+                print("⚠️ [PracticeView] Failed to clean up temp file: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
 enum PracticeState {
     case initial
     case playing
-    case promptingRecording
     case recording
     case analyzing
     case completed
