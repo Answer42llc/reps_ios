@@ -247,7 +247,7 @@ class SpeechService: NSObject {
             } else if let silenceStart = silenceStartTime {
                 // Already silent, check duration
                 let silenceDuration = currentTime.timeIntervalSince(silenceStart)
-                if silenceDuration >= 3.0 { // 3 seconds of silence
+                if silenceDuration >= 1.5 { // 1.5 seconds of silence
                     onSilenceDetected?(true)
                 }
             }

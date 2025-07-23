@@ -15,6 +15,11 @@ struct PracticeView: View {
     @State private var similarity: Float = 0.0
     @State private var silentRecordingDetected = false
     
+    // Smart recording stop
+    @State private var maxRecordingTimer: Timer?
+    @State private var recordingStartTime: Date?
+    @State private var hasGoodSimilarity = false
+    
     private var practiceURL: URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return documentsPath.appendingPathComponent("\(UUID().uuidString).m4a")
@@ -55,6 +60,21 @@ struct PracticeView: View {
             }
         } message: {
             Text(errorMessage)
+        }
+        .onChange(of: speechService.recognizedText) { _, newText in
+            // Monitor for smart recording stop
+            if practiceState == .recording && !newText.isEmpty {
+                let currentSimilarity = speechService.calculateSimilarity(
+                    expected: affirmation.text, 
+                    recognized: newText
+                )
+                
+                if currentSimilarity >= 0.8 && !hasGoodSimilarity {
+                    hasGoodSimilarity = true
+                    print("🎯 Good similarity achieved: \(currentSimilarity)")
+                    monitorSilenceForSmartStop()
+                }
+            }
         }
     }
     
@@ -329,9 +349,9 @@ struct PracticeView: View {
             try await audioService.playAudio(from: audioURL)
             print("✅ [PracticeView] Audio playback completed successfully")
             
-            // Brief pause before starting recording
-            print("⏳ [PracticeView] Waiting 0.5 seconds before starting recording")
-            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+//            // Brief pause before starting recording
+//            print("⏳ [PracticeView] Waiting 0.5 seconds before starting recording")
+//            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
             await startRecording()
             
         } catch {
@@ -346,6 +366,8 @@ struct PracticeView: View {
         print("🎤 [PracticeView] Starting recording stage")
         await MainActor.run {
             practiceState = .recording
+            recordingStartTime = Date()
+            hasGoodSimilarity = false
         }
         
         do {
@@ -357,17 +379,14 @@ struct PracticeView: View {
             print("🗣️ [PracticeView] Starting speech recognition for text: '\(affirmation.text)'")
             try speechService.startRecognition(expectedText: affirmation.text)
             
-            // Auto-stop after 10 seconds or when user stops speaking
-            print("⏱️ [PracticeView] Recording will auto-stop after 10 seconds")
-            try await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds max
-            
-            if audioService.isRecording {
-                print("🛑 [PracticeView] Stopping recording after 10 seconds timeout")
-                audioService.stopRecording()
-                speechService.stopRecognition()
-                await analyzeRecording()
-            } else {
-                print("ℹ️ [PracticeView] Recording was already stopped")
+            // Set up maximum recording timer (10 seconds)
+            await MainActor.run {
+                maxRecordingTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { _ in
+                    print("⏰ Maximum recording time reached - stopping recording")
+                    Task {
+                        await self.stopRecording()
+                    }
+                }
             }
             
         } catch {
@@ -376,6 +395,25 @@ struct PracticeView: View {
                 showError("Failed to start recording: \(error.localizedDescription)")
             }
         }
+    }
+    
+    private func stopRecording() async {
+        guard practiceState == .recording else { return }
+        
+        print("🛑 [PracticeView] Stopping recording")
+        await MainActor.run {
+            practiceState = .analyzing
+        }
+        
+        // Clean up smart recording timer
+        maxRecordingTimer?.invalidate()
+        maxRecordingTimer = nil
+        
+        // Stop both audio recording and speech recognition
+        audioService.stopRecording()
+        speechService.stopRecognition()
+        
+        await analyzeRecording()
     }
     
     private func analyzeRecording() async {
@@ -441,7 +479,7 @@ struct PracticeView: View {
             similarity = 0.0
             silentRecordingDetected = false
         }
-        await startPracticeFlow()
+        await startRecording()
     }
     
     private func cleanup() {
@@ -450,6 +488,10 @@ struct PracticeView: View {
         audioService.stopPlayback()
         speechService.stopRecognition()
         
+        // Clean up timer
+        maxRecordingTimer?.invalidate()
+        maxRecordingTimer = nil
+        
         // Clean up temporary recording file
         if FileManager.default.fileExists(atPath: practiceURL.path) {
             do {
@@ -457,6 +499,18 @@ struct PracticeView: View {
                 print("🗑️ [PracticeView] Cleaned up temporary recording file: \(practiceURL.path)")
             } catch {
                 print("⚠️ [PracticeView] Failed to clean up temp file: \(error.localizedDescription)")
+            }
+        }
+    }
+    
+    private func monitorSilenceForSmartStop() {
+        // Set up silence detection callback for smart stop
+        speechService.onSilenceDetected = { isSilent in
+            if isSilent && self.hasGoodSimilarity && self.practiceState == .recording {
+                print("🤫 Silence detected with good similarity - stopping recording")
+                Task {
+                    await self.stopRecording()
+                }
             }
         }
     }
