@@ -52,3 +52,6 @@ struct Affirmation {
 - Basic functionality only
 - No gamification, celebrations, or advanced features
 - Focus on core voice repetition cycle
+
+## Build Notes
+- Reminder to modify code and attempt build for iPhone100

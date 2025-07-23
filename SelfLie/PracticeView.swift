@@ -20,9 +20,22 @@ struct PracticeView: View {
     @State private var recordingStartTime: Date?
     @State private var hasGoodSimilarity = false
     
+    // Performance timing
+    @State private var appearTime: Date?
+    
+    // 优化：预准备状态切换数据
+    @State private var isPreparingForRecording = false
+    
     private var practiceURL: URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return documentsPath.appendingPathComponent("\(UUID().uuidString).m4a")
+    }
+    
+    // Helper function to calculate elapsed time with millisecond precision
+    private func elapsedTime(from startTime: Date?) -> String {
+        guard let startTime = startTime else { return "N/A" }
+        let elapsed = Date().timeIntervalSince(startTime) * 1000 // Convert to milliseconds
+        return String(format: "%.0fms", elapsed)
     }
     
     var body: some View {
@@ -50,6 +63,8 @@ struct PracticeView: View {
         .padding()
         .foregroundColor(.white)
         .onAppear {
+            appearTime = Date()
+            print("⏰ [PracticeView] View appeared at \(elapsedTime(from: appearTime))")
             Task {
                 await startPracticeFlow()
             }
@@ -235,7 +250,25 @@ struct PracticeView: View {
             if silentRecordingDetected {
                 Button("Try Speaking Again") {
                     Task {
-                        await restartPractice()
+                        // Immediately reset state for better UX
+                        await MainActor.run {
+                            practiceState = .initial
+                            similarity = 0.0
+                            silentRecordingDetected = false
+                        }
+                        
+                        cleanup()
+                        // Pre-prepare a new recorder for direct recording
+                        do {
+                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔧 Pre-preparing new recorder for Try Speaking Again")
+                            let prepareStartTime = Date()
+                            try await audioService.prepareRecording(to: practiceURL)
+                            let prepareDuration = Date().timeIntervalSince(prepareStartTime) * 1000
+                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ New recorder prepared for direct recording in \(String(format: "%.0fms", prepareDuration))")
+                        } catch {
+                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ Failed to prepare new recorder: \(error.localizedDescription)")
+                        }
+                        await startRecording()
                     }
                 }
                 .font(.headline)
@@ -268,7 +301,25 @@ struct PracticeView: View {
             } else {
                 Button("Try Again") {
                     Task {
-                        await restartPractice()
+                        // Immediately reset state for better UX
+                        await MainActor.run {
+                            practiceState = .initial
+                            similarity = 0.0
+                            silentRecordingDetected = false
+                        }
+                        
+                        cleanup()
+                        // Pre-prepare a new recorder for direct recording
+                        do {
+                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔧 Pre-preparing new recorder for Try Again")
+                            let prepareStartTime = Date()
+                            try await audioService.prepareRecording(to: practiceURL)
+                            let prepareDuration = Date().timeIntervalSince(prepareStartTime) * 1000
+                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ New recorder prepared for direct recording in \(String(format: "%.0fms", prepareDuration))")
+                        } catch {
+                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ Failed to prepare new recorder: \(error.localizedDescription)")
+                        }
+                        await startRecording()
                     }
                 }
                 .font(.headline)
@@ -292,97 +343,293 @@ struct PracticeView: View {
     }
     
     private func startPracticeFlow() async {
-        print("🎯 [PracticeView] Starting practice flow for affirmation: '\(affirmation.text)'")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Starting practice flow for affirmation: '\(affirmation.text)'")
         
         #if targetEnvironment(simulator)
-        print("📱 [PracticeView] Running in simulator mode - skipping actual audio/recording")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Running in simulator mode - skipping actual audio/recording")
         // Simplified simulator flow: just increment count
         await MainActor.run {
             practiceState = .completed
             similarity = 0.8
             incrementCount()
         }
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Simulator flow completed")
         #else
-        print("📱 [PracticeView] Running on real device - requesting permissions")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Running on real device - requesting permissions")
         // Real device flow with full audio playback and recording
         // Request permissions first
+        let permissionStartTime = Date()
         let microphoneGranted = await audioService.requestMicrophonePermission()
         let speechGranted = await speechService.requestSpeechRecognitionPermission()
+        let permissionDuration = Date().timeIntervalSince(permissionStartTime) * 1000
         
-        print("🔐 [PracticeView] Permissions - Microphone: \(microphoneGranted), Speech: \(speechGranted)")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Permissions completed in \(String(format: "%.0fms", permissionDuration)) - Microphone: \(microphoneGranted), Speech: \(speechGranted)")
         
         guard microphoneGranted && speechGranted else {
-            print("❌ [PracticeView] Permission denied - cannot proceed with practice")
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Permission denied - cannot proceed with practice")
             showError("Permissions required for practice session")
             return
         }
         
-        // Start the automatic flow
-        print("▶️ [PracticeView] Permissions granted - starting audio playback")
-        await playAffirmation()
+        // Set up audio session immediately after permissions
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔧 Setting up audio session")
+        let audioSessionStartTime = Date()
+        do {
+            try await AudioSessionManager.shared.setupForPlayAndRecord()
+            let audioSessionDuration = Date().timeIntervalSince(audioSessionStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Audio session ready in \(String(format: "%.0fms", audioSessionDuration))")
+        } catch {
+            let audioSessionDuration = Date().timeIntervalSince(audioSessionStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Audio session setup failed in \(String(format: "%.0fms", audioSessionDuration)): \(error.localizedDescription)")
+            showError("Failed to setup audio session")
+            return
+        }
+        
+        // Parallel execution: Start audio playback + recording warmup simultaneously
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🚀 Starting parallel audio playback + recording warmup")
+        let parallelStartTime = Date()
+        
+        async let audioPlaybackTask: () = playAffirmation()
+        async let recordingWarmupTask: () = performRecordingWarmup()
+        
+        let _ = await (audioPlaybackTask, recordingWarmupTask)
+        
+        let parallelDuration = Date().timeIntervalSince(parallelStartTime) * 1000
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Parallel tasks completed in \(String(format: "%.0fms", parallelDuration))")
         #endif
     }
     
-    private func playAffirmation() async {
-        print("🔊 [PracticeView] Starting audio playback stage")
-        await MainActor.run {
-            practiceState = .playing
-            silentRecordingDetected = false
+    private func performRecordingWarmup() async {
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔥 PRECISE: Starting optimized recording warmup")
+        let warmupStartTime = Date()
+        
+        do {
+            // 优化：并行执行录音器准备和音频会话预热
+            let parallelWarmupStartTime = Date()
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🚀 PRECISE: Starting parallel warmup tasks")
+            
+            async let recorderPrepTask: Void = {
+                let prepStartTime = Date()
+                try await audioService.prepareRecording(to: practiceURL)
+                let prepDuration = Date().timeIntervalSince(prepStartTime) * 1000
+                await MainActor.run {
+                    print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ PRECISE: Recorder preparation completed in \(String(format: "%.0fms", prepDuration))")
+                }
+            }()
+            
+            async let sessionWarmupTask: Void = {
+                let warmupTaskStartTime = Date()
+                try await AudioSessionManager.shared.preWarmRecording(to: practiceURL)
+                let warmupTaskDuration = Date().timeIntervalSince(warmupTaskStartTime) * 1000
+                await MainActor.run {
+                    print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ PRECISE: Audio session warmup completed in \(String(format: "%.0fms", warmupTaskDuration))")
+                }
+            }()
+            
+            // 等待并行任务完成
+            let _ = try await (recorderPrepTask, sessionWarmupTask)
+            
+            let parallelDuration = Date().timeIntervalSince(parallelWarmupStartTime) * 1000
+            let totalWarmupDuration = Date().timeIntervalSince(warmupStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ PRECISE: Parallel warmup tasks completed in \(String(format: "%.0fms", parallelDuration))")
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ PRECISE: Total recording warmup completed in \(String(format: "%.0fms", totalWarmupDuration))")
+        } catch {
+            let warmupDuration = Date().timeIntervalSince(warmupStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ PRECISE: Recording warmup failed in \(String(format: "%.0fms", warmupDuration)): \(error.localizedDescription)")
         }
+    }
+    
+    private func playAffirmation() async {
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔊 PRECISE: Starting audio playback stage")
+        
+        // 优化：直接设置状态，避免MainActor调度延迟
+        let stateUpdateStartTime = Date()
+        practiceState = .playing
+        silentRecordingDetected = false
+        let stateUpdateDuration = Date().timeIntervalSince(stateUpdateStartTime) * 1000
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚡ PRECISE: State update completed in \(String(format: "%.0fms", stateUpdateDuration))")
         
         guard let audioURL = affirmation.audioURL else {
-            print("❌ [PracticeView] Audio URL not found for affirmation")
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Audio URL not found for affirmation")
             showError("Audio file not found")
             return
         }
         
         // Check if file actually exists
         guard FileManager.default.fileExists(atPath: audioURL.path) else {
-            print("❌ [PracticeView] Audio file missing at path: \(audioURL.path)")
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Audio file missing at path: \(audioURL.path)")
             showError("Audio file missing at: \(audioURL.path)")
             return
         }
         
-        print("🎵 [PracticeView] Playing audio from: \(audioURL.path)")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎵 Playing audio from: \(audioURL.path)")
         
+        let playbackStartTime = Date()
         do {
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📞 About to call audioService.playAudio()")
             try await audioService.playAudio(from: audioURL)
-            print("✅ [PracticeView] Audio playback completed successfully")
+            let playbackDuration = Date().timeIntervalSince(playbackStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📞 audioService.playAudio() returned after \(String(format: "%.0fms", playbackDuration))")
             
-//            // Brief pause before starting recording
-//            print("⏳ [PracticeView] Waiting 0.5 seconds before starting recording")
-//            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-            await startRecording()
+            // 精确时间戳：准备调用startOptimizedRecording
+            let preRecordingCallTime = Date()
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: About to call startOptimizedRecording at [\(elapsedTime(from: appearTime))]")
+            
+            await startOptimizedRecording()
+            
+            let recordingCallDuration = Date().timeIntervalSince(preRecordingCallTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: startOptimizedRecording call completed in \(String(format: "%.0fms", recordingCallDuration))")
             
         } catch {
-            print("❌ [PracticeView] Audio playback failed: \(error.localizedDescription)")
+            let playbackDuration = Date().timeIntervalSince(playbackStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Audio playback failed in \(String(format: "%.0fms", playbackDuration)): \(error.localizedDescription)")
             await MainActor.run {
                 showError("Failed to play audio: \(error.localizedDescription)")
             }
         }
     }
     
+    private func startOptimizedRecording() async {
+        let methodEntryTime = Date()
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🚀 PRECISE: ENTERED startOptimizedRecording() at [\(elapsedTime(from: appearTime))]")
+        
+        // 精确测量MainActor调度延迟
+        let preMainActorTime = Date()
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: About to call MainActor.run")
+        
+        await MainActor.run {
+            let mainActorEntryTime = Date()
+            let mainActorDelay = mainActorEntryTime.timeIntervalSince(preMainActorTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚡ PRECISE: MainActor.run entered after \(String(format: "%.0fms", mainActorDelay)) delay")
+            
+            practiceState = .recording
+            recordingStartTime = Date()
+            hasGoodSimilarity = false
+            
+            let mainActorExitTime = Date()
+            let mainActorDuration = mainActorExitTime.timeIntervalSince(mainActorEntryTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚡ PRECISE: MainActor.run completed in \(String(format: "%.0fms", mainActorDuration))")
+        }
+        
+        let postMainActorTime = Date()
+        let totalMainActorOverhead = postMainActorTime.timeIntervalSince(preMainActorTime) * 1000
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: Total MainActor overhead: \(String(format: "%.0fms", totalMainActorOverhead))")
+        
+        let recordingSetupStartTime = Date()
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: Recording setup phase started")
+        
+        do {
+            // Since recording is pre-warmed, this should be much faster
+            let recorderStartTime = Date()
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🏃‍♂️ PRECISE: About to call audioService.startPreparedRecording()")
+            
+            try await audioService.startPreparedRecording()
+            
+            let recorderDuration = Date().timeIntervalSince(recorderStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ PRECISE: Pre-warmed recorder started in \(String(format: "%.0fms", recorderDuration))")
+            
+            // Start real-time speech recognition with retry mechanism
+            let speechStartTime = Date()
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🗣️ PRECISE: About to start speech recognition for text: '\(affirmation.text)'")
+            
+            do {
+                try speechService.startRecognition(expectedText: affirmation.text)
+                let speechDuration = Date().timeIntervalSince(speechStartTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ PRECISE: Speech recognition started in \(String(format: "%.0fms", speechDuration))")
+            } catch {
+                let speechDuration = Date().timeIntervalSince(speechStartTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ PRECISE: Speech recognition failed in \(String(format: "%.0fms", speechDuration)), attempting retry with audio session reset...")
+                
+                // Try resetting audio session for Code 1101 recovery
+                do {
+                    try await AudioSessionManager.shared.resetAudioSession()
+                    let retryStartTime = Date()
+                    try speechService.startRecognition(expectedText: affirmation.text)
+                    let retryDuration = Date().timeIntervalSince(retryStartTime) * 1000
+                    print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ PRECISE: Speech recognition retry succeeded in \(String(format: "%.0fms", retryDuration))")
+                } catch {
+                    let retryTotalDuration = Date().timeIntervalSince(speechStartTime) * 1000
+                    print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ PRECISE: Speech recognition retry failed after \(String(format: "%.0fms", retryTotalDuration)): \(error.localizedDescription)")
+                    throw error
+                }
+            }
+            
+            let setupDuration = Date().timeIntervalSince(recordingSetupStartTime) * 1000
+            let totalMethodDuration = Date().timeIntervalSince(methodEntryTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: Recording setup completed in \(String(format: "%.0fms", setupDuration))")
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: Total startOptimizedRecording() duration: \(String(format: "%.0fms", totalMethodDuration))")
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: Method overhead (total - setup): \(String(format: "%.0fms", totalMethodDuration - setupDuration))")
+            
+            // 优化：直接设置定时器，避免MainActor延迟
+            maxRecordingTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { _ in
+                print("⏰ [PracticeView] [\(self.elapsedTime(from: self.appearTime))] ⏰ Maximum recording time reached - stopping recording")
+                Task {
+                    await self.stopRecording()
+                }
+            }
+            
+        } catch {
+            let setupDuration = Date().timeIntervalSince(recordingSetupStartTime) * 1000
+            let totalMethodDuration = Date().timeIntervalSince(methodEntryTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ PRECISE: Failed to start optimized recording in \(String(format: "%.0fms", setupDuration)): \(error.localizedDescription)")
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ PRECISE: Total failed method duration: \(String(format: "%.0fms", totalMethodDuration))")
+            // 优化：直接调用showError，避免MainActor延迟
+            showError("Failed to start recording: \(error.localizedDescription)")
+        }
+    }
+    
     private func startRecording() async {
-        print("🎤 [PracticeView] Starting recording stage")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎤 ENTERED startRecording() method")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎤 Starting recording stage")
         await MainActor.run {
             practiceState = .recording
             recordingStartTime = Date()
             hasGoodSimilarity = false
         }
         
+        let recordingSetupStartTime = Date()
         do {
-            // Start recording audio
-            print("📹 [PracticeView] Starting audio recording to: \(practiceURL.path)")
-            try await audioService.startRecording(to: practiceURL)
+            // Try to use pre-prepared recorder first, fallback to regular recording
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🚀 Using pre-prepared recorder (prepared at app start)")
+            let recorderStartTime = Date()
+            do {
+                try await audioService.startPreparedRecording()
+                let recorderDuration = Date().timeIntervalSince(recorderStartTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Pre-prepared recorder started instantly in \(String(format: "%.0fms", recorderDuration))!")
+            } catch {
+                let recorderDuration = Date().timeIntervalSince(recorderStartTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ Pre-prepared recorder unavailable in \(String(format: "%.0fms", recorderDuration)), falling back to regular recording")
+                let fallbackStartTime = Date()
+                try await audioService.startRecording(to: practiceURL)
+                let fallbackDuration = Date().timeIntervalSince(fallbackStartTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Regular recording started successfully in \(String(format: "%.0fms", fallbackDuration))")
+            }
             
-            // Start real-time speech recognition simultaneously
-            print("🗣️ [PracticeView] Starting speech recognition for text: '\(affirmation.text)'")
-            try speechService.startRecognition(expectedText: affirmation.text)
+            // Start real-time speech recognition with retry mechanism
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🗣️ Starting speech recognition for text: '\(affirmation.text)'")
+            let speechStartTime = Date()
+            do {
+                try speechService.startRecognition(expectedText: affirmation.text)
+                let speechDuration = Date().timeIntervalSince(speechStartTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech recognition started in \(String(format: "%.0fms", speechDuration))")
+            } catch {
+                let speechDuration = Date().timeIntervalSince(speechStartTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ Speech recognition failed in \(String(format: "%.0fms", speechDuration)), attempting retry...")
+                // Brief delay before retry
+                try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+                let retryStartTime = Date()
+                try speechService.startRecognition(expectedText: affirmation.text)
+                let retryDuration = Date().timeIntervalSince(retryStartTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech recognition retry succeeded in \(String(format: "%.0fms", retryDuration))")
+            }
+            
+            let setupDuration = Date().timeIntervalSince(recordingSetupStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 Recording setup completed in \(String(format: "%.0fms", setupDuration))")
             
             // Set up maximum recording timer (10 seconds)
             await MainActor.run {
                 maxRecordingTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { _ in
-                    print("⏰ Maximum recording time reached - stopping recording")
+                    print("⏰ [PracticeView] [\(self.elapsedTime(from: self.appearTime))] ⏰ Maximum recording time reached - stopping recording")
                     Task {
                         await self.stopRecording()
                     }
@@ -390,7 +637,8 @@ struct PracticeView: View {
             }
             
         } catch {
-            print("❌ [PracticeView] Failed to start recording: \(error.localizedDescription)")
+            let setupDuration = Date().timeIntervalSince(recordingSetupStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Failed to start recording in \(String(format: "%.0fms", setupDuration)): \(error.localizedDescription)")
             await MainActor.run {
                 showError("Failed to start recording: \(error.localizedDescription)")
             }
@@ -400,7 +648,7 @@ struct PracticeView: View {
     private func stopRecording() async {
         guard practiceState == .recording else { return }
         
-        print("🛑 [PracticeView] Stopping recording")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🛑 Stopping recording")
         await MainActor.run {
             practiceState = .analyzing
         }
@@ -410,26 +658,32 @@ struct PracticeView: View {
         maxRecordingTimer = nil
         
         // Stop both audio recording and speech recognition
+        let stopStartTime = Date()
         audioService.stopRecording()
         speechService.stopRecognition()
+        let stopDuration = Date().timeIntervalSince(stopStartTime) * 1000
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Recording services stopped in \(String(format: "%.0fms", stopDuration))")
         
         await analyzeRecording()
     }
     
     private func analyzeRecording() async {
-        print("🔍 [PracticeView] Starting speech analysis stage")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔍 Starting speech analysis stage")
         await MainActor.run {
             practiceState = .analyzing
         }
         
+        let analysisStartTime = Date()
+        
         // Use the real-time recognized text
         let recognizedText = speechService.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
         
-        print("🎯 [PracticeView] Expected text: '\(affirmation.text)'")
-        print("✅ [PracticeView] Recognized text: '\(recognizedText)'")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 Expected text: '\(affirmation.text)'")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Recognized text: '\(recognizedText)'")
         
         if recognizedText.isEmpty {
-            print("🔇 [PracticeView] No speech detected during recording")
+            let analysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔇 No speech detected during recording (analyzed in \(String(format: "%.0fms", analysisDuration)))")
             await MainActor.run {
                 silentRecordingDetected = true
                 practiceState = .completed
@@ -438,23 +692,26 @@ struct PracticeView: View {
         }
         
         // Calculate similarity using embedding-based comparison
-        print("📊 [PracticeView] Calculating similarity between expected and recognized text")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📊 Calculating similarity between expected and recognized text")
+        let similarityStartTime = Date()
         similarity = speechService.calculateSimilarity(expected: affirmation.text, recognized: recognizedText)
+        let similarityDuration = Date().timeIntervalSince(similarityStartTime) * 1000
         
-        print("🔍 [PracticeView] Calculated similarity: \(similarity) (threshold: 0.8)")
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔍 Calculated similarity: \(similarity) (threshold: 0.8) in \(String(format: "%.0fms", similarityDuration))")
         
         await MainActor.run {
             practiceState = .completed
             
             if similarity >= 0.8 {
-                print("🎉 [PracticeView] Similarity above threshold - incrementing count")
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎉 Similarity above threshold - incrementing count")
                 incrementCount()
             } else {
-                print("📈 [PracticeView] Similarity below threshold - encouraging retry")
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📈 Similarity below threshold - encouraging retry")
             }
         }
         
-        print("✅ [PracticeView] Speech analysis completed")
+        let totalAnalysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech analysis completed in \(String(format: "%.0fms", totalAnalysisDuration))")
     }
     
     private func incrementCount() {
@@ -479,13 +736,14 @@ struct PracticeView: View {
             similarity = 0.0
             silentRecordingDetected = false
         }
-        await startRecording()
+        await startPracticeFlow()
     }
     
     private func cleanup() {
         print("🧹 [PracticeView] Cleaning up audio services and temp files")
         audioService.stopRecording()
         audioService.stopPlayback()
+        audioService.cleanupPreparedRecording()
         speechService.stopRecognition()
         
         // Clean up timer

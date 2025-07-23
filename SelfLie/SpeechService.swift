@@ -27,6 +27,11 @@ class SpeechService: NSObject {
         // Don't set up recognizer here - we'll set it up based on the text language
     }
     
+    deinit {
+        print("🧹 [SpeechService] Cleaning up in deinit")
+        stopRecognition()
+    }
+    
     func requestSpeechRecognitionPermission() async -> Bool {
         await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
@@ -36,11 +41,35 @@ class SpeechService: NSObject {
     }
     
     func startRecognition(expectedText: String) throws {
+        print("🎤 [SpeechService] Starting speech recognition")
+        
+        // Stop any existing recognition first
+        if isRecognizing {
+            print("⚠️ [SpeechService] Stopping existing recognition before starting new one")
+            stopRecognition()
+            
+            // Give a brief moment for cleanup
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        
         // Set up recognizer for the expected text language
         setupRecognizerForText(expectedText)
         
         guard let speechRecognizer = speechRecognizer else {
+            print("❌ [SpeechService] No speech recognizer available")
             throw SpeechServiceError.recognitionFailed
+        }
+        
+        guard speechRecognizer.isAvailable else {
+            print("❌ [SpeechService] Speech recognizer not available")
+            throw SpeechServiceError.recognitionFailed
+        }
+        
+        // Ensure audio engine is in clean state
+        if audioEngine.isRunning {
+            print("⚠️ [SpeechService] Audio engine still running, stopping...")
+            audioEngine.stop()
+            Thread.sleep(forTimeInterval: 0.1)
         }
         
         // Cancel any previous recognition task
@@ -59,13 +88,28 @@ class SpeechService: NSObject {
         recognitionTask = speechRecognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             guard let self = self else { return }
             
+            if let error = error {
+                print("❌ [SpeechService] Recognition error: \(error.localizedDescription)")
+                let nsError = error as NSError
+                print("   Domain: \(nsError.domain), Code: \(nsError.code)")
+                
+                // Handle specific error codes
+                if nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 1101 {
+                    print("   🔧 Detected 1101 error - will attempt recovery")
+                }
+                
+                self.stopRecognition()
+                return
+            }
+            
             if let result = result {
                 self.recognizedText = result.bestTranscription.formattedString
                 self.confidence = result.bestTranscription.segments.last?.confidence ?? 0.0
-            }
-            
-            if error != nil || result?.isFinal == true {
-                self.stopRecognition()
+                
+                if result.isFinal {
+                    print("✅ [SpeechService] Final recognition result: '\(self.recognizedText)'")
+                    self.stopRecognition()
+                }
             }
         }
         
@@ -80,25 +124,54 @@ class SpeechService: NSObject {
             self?.processAudioLevel(from: buffer)
         }
         
-        audioEngine.prepare()
-        try audioEngine.start()
-        isRecognizing = true
-        
-        // Reset silence detection state
-        resetSilenceDetection()
+        // Prepare and start audio engine with error handling
+        do {
+            audioEngine.prepare()
+            try audioEngine.start()
+            isRecognizing = true
+            print("✅ [SpeechService] Audio engine started successfully")
+            
+            // Reset silence detection state
+            resetSilenceDetection()
+        } catch {
+            print("❌ [SpeechService] Failed to start audio engine: \(error.localizedDescription)")
+            
+            // Clean up on failure
+            recognitionTask?.cancel()
+            recognitionTask = nil
+            self.recognitionRequest?.endAudio()
+            self.recognitionRequest = nil
+            
+            throw SpeechServiceError.recognitionFailed
+        }
     }
     
     func stopRecognition() {
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        guard isRecognizing else { return }
         
+        print("🛑 [SpeechService] Stopping speech recognition")
+        
+        // Stop the audio engine first
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        
+        // Remove audio tap safely
+        if audioEngine.inputNode.numberOfInputs > 0 {
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
+        
+        // End audio input for recognition request
         recognitionRequest?.endAudio()
         recognitionRequest = nil
         
+        // Cancel and clean up recognition task
         recognitionTask?.cancel()
         recognitionTask = nil
         
         isRecognizing = false
+        
+        print("✅ [SpeechService] Speech recognition stopped completely")
     }
     
     func calculateSimilarity(expected: String, recognized: String) -> Float {
