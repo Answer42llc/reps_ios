@@ -15,6 +15,7 @@ SelfLie is a habit reinforcement app that helps users build or quit habits throu
   - AVFoundation: Audio recording and playback
   - Speech: Speech-to-text verification
   - Core Data: Local data persistence
+- Minimum support up to iOS 17
 
 ### App Architecture
 - **Pattern**: MVVM with @Observable ViewModels
