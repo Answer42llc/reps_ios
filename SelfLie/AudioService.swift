@@ -13,6 +13,11 @@ class AudioService: NSObject {
     var recordingDuration: TimeInterval = 0
     
     private var recordingTimer: Timer?
+    private var playbackProgressTimer: Timer?
+    
+    // Playback progress callbacks
+    var onPlaybackProgress: ((TimeInterval, TimeInterval) -> Void)?
+    var onPlaybackComplete: (() -> Void)?
     
     override init() {
         super.init()
@@ -22,6 +27,7 @@ class AudioService: NSObject {
     deinit {
         recordingTimer?.invalidate()
         preWarmedTimer?.invalidate()
+        playbackProgressTimer?.invalidate()
         cleanupPreparedRecording()
     }
     
@@ -205,6 +211,10 @@ class AudioService: NSObject {
             print("⏰ [AudioService] ✅ AVAudioPlayer created and prepared in \(String(format: "%.0fms", playerCreateDuration))")
             
             isPlaying = true
+            
+            // Start progress tracking timer
+            startPlaybackProgressTracking()
+            
             print("⏰ [AudioService] ▶️ Calling audioPlayer.play()")
             let playStartTime = Date()
             audioPlayer?.play()
@@ -226,9 +236,16 @@ class AudioService: NSObject {
             let totalWaitDuration = Date().timeIntervalSince(waitStartTime) * 1000
             print("⏰ [AudioService] ✅ Playback completed, exited while loop after \(String(format: "%.0fms", totalWaitDuration)) (\(loopCount) loops)")
             
+            // Stop progress tracking
+            stopPlaybackProgressTracking()
+            
+            // Notify completion
+            onPlaybackComplete?()
+            
         } catch {
             print("⏰ [AudioService] ❌ playAudio() failed with error: \(error.localizedDescription)")
             isPlaying = false
+            stopPlaybackProgressTracking()
             throw AudioServiceError.playbackFailed
         }
         
@@ -239,6 +256,49 @@ class AudioService: NSObject {
         audioPlayer?.stop()
         audioPlayer = nil
         isPlaying = false
+        stopPlaybackProgressTracking()
+    }
+    
+    private func startPlaybackProgressTracking() {
+        stopPlaybackProgressTracking() // Stop any existing timer
+        
+        print("🎵 [AudioService] Starting playback progress tracking")
+        
+        // Ensure timer runs on main queue for UI updates
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            
+            self.playbackProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                guard let self = self,
+                      let player = self.audioPlayer else { 
+                    print("🎵 [AudioService] ⚠️ Progress tracking callback: no player available")
+                    return 
+                }
+                
+                let currentTime = player.currentTime
+                let duration = player.duration
+                
+                print("🎵 [AudioService] Progress: \(String(format: "%.2f", currentTime))/\(String(format: "%.2f", duration))s")
+                
+                if let callback = self.onPlaybackProgress {
+                    callback(currentTime, duration)
+                    print("🎵 [AudioService] ✅ Called onPlaybackProgress callback")
+                } else {
+                    print("🎵 [AudioService] ⚠️ No onPlaybackProgress callback set!")
+                }
+            }
+            
+            // Add timer to main run loop
+            RunLoop.main.add(self.playbackProgressTimer!, forMode: .common)
+        }
+    }
+    
+    private func stopPlaybackProgressTracking() {
+        DispatchQueue.main.async { [weak self] in
+            self?.playbackProgressTimer?.invalidate()
+            self?.playbackProgressTimer = nil
+            print("🎵 [AudioService] Stopped playback progress tracking")
+        }
     }
 }
 

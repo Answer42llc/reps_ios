@@ -359,12 +359,46 @@ struct RecordingView: View {
         do {
             try viewContext.save()
             
+            // Start audio analysis in background to generate precise word timings
+            Task {
+                await analyzeAudioForWordTimings(affirmation: newAffirmation)
+            }
+            
             // Navigate back to dashboard after a brief delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 navigationCoordinator.completeAddAffirmationFlow()
             }
         } catch {
             showError("Failed to save affirmation: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Analyze the recorded audio to extract precise word timings
+    private func analyzeAudioForWordTimings(affirmation: Affirmation) async {
+        guard let audioURL = affirmation.audioURL else {
+            print("⚠️ [RecordingView] No audio URL available for analysis")
+            return
+        }
+        
+        print("🎯 [RecordingView] Starting background audio analysis for word timings")
+        
+        do {
+            let wordTimings = try await speechService.analyzeAudioFile(at: audioURL, expectedText: affirmation.text)
+            
+            // Update the affirmation with precise timings on main thread
+            await MainActor.run {
+                affirmation.wordTimings = wordTimings
+                
+                do {
+                    try viewContext.save()
+                    print("✅ [RecordingView] Saved \(wordTimings.count) precise word timings")
+                } catch {
+                    print("⚠️ [RecordingView] Failed to save word timings: \(error)")
+                }
+            }
+        } catch {
+            print("⚠️ [RecordingView] Audio analysis failed: \(error)")
+            // Don't fail the affirmation creation - it will use fallback timing
         }
     }
     

@@ -1,6 +1,18 @@
 import Speech
 import AVFoundation
 
+// Word timing data structure
+struct WordTiming: Codable {
+    let word: String
+    let startTime: TimeInterval
+    let duration: TimeInterval
+    let confidence: Float
+    
+    var endTime: TimeInterval {
+        return startTime + duration
+    }
+}
+
 @Observable
 class SpeechService: NSObject {
     private var speechRecognizer: SFSpeechRecognizer?
@@ -16,6 +28,11 @@ class SpeechService: NSObject {
     var currentAudioLevel: Float = -100.0
     var onAudioLevelUpdate: ((Float) -> Void)?
     var onSilenceDetected: ((Bool) -> Void)?
+    
+    // Word-level recognition callbacks
+    var onWordRecognized: ((String, Set<Int>) -> Void)?
+    var recognizedWords: Set<Int> = []
+    private var expectedWords: [String] = []
     
     // Silence detection
     private var silenceThreshold: Float = -40.0 // dB
@@ -51,6 +68,12 @@ class SpeechService: NSObject {
             // Give a brief moment for cleanup
             Thread.sleep(forTimeInterval: 0.1)
         }
+        
+        // Prepare expected words for tracking
+        expectedWords = expectedText.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .map { $0.lowercased() }
+        recognizedWords.removeAll()
         
         // Set up recognizer for the expected text language
         setupRecognizerForText(expectedText)
@@ -105,6 +128,9 @@ class SpeechService: NSObject {
             if let result = result {
                 self.recognizedText = result.bestTranscription.formattedString
                 self.confidence = result.bestTranscription.segments.last?.confidence ?? 0.0
+                
+                // Process word-level recognition
+                self.processWordRecognition(result: result)
                 
                 if result.isFinal {
                     print("✅ [SpeechService] Final recognition result: '\(self.recognizedText)'")
@@ -172,6 +198,75 @@ class SpeechService: NSObject {
         isRecognizing = false
         
         print("✅ [SpeechService] Speech recognition stopped completely")
+    }
+    
+    private func processWordRecognition(result: SFSpeechRecognitionResult) {
+        guard !expectedWords.isEmpty else { return }
+        
+        let recognizedText = result.bestTranscription.formattedString.lowercased()
+        let recognizedWordsArray = recognizedText.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+        
+        var newlyRecognizedIndices: Set<Int> = []
+        
+        // Check each expected word against recognized words
+        for (expectedIndex, expectedWord) in expectedWords.enumerated() {
+            if !recognizedWords.contains(expectedIndex) { // Only check words not already recognized
+                for recognizedWord in recognizedWordsArray {
+                    if recognizedWord.contains(expectedWord) || expectedWord.contains(recognizedWord) {
+                        // Consider it a match if there's partial similarity
+                        let similarity = calculateWordSimilarity(expectedWord, recognizedWord)
+                        if similarity > 0.7 { // Threshold for word match
+                            recognizedWords.insert(expectedIndex)
+                            newlyRecognizedIndices.insert(expectedIndex)
+                            break
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Notify about newly recognized words
+        if !newlyRecognizedIndices.isEmpty || !recognizedWords.isEmpty {
+            onWordRecognized?(recognizedText, recognizedWords)
+        }
+    }
+    
+    private func calculateWordSimilarity(_ word1: String, _ word2: String) -> Float {
+        // Simple Levenshtein distance-based similarity
+        let distance = levenshteinDistance(word1, word2)
+        let maxLength = max(word1.count, word2.count)
+        guard maxLength > 0 else { return 1.0 }
+        return 1.0 - Float(distance) / Float(maxLength)
+    }
+    
+    private func levenshteinDistance(_ s1: String, _ s2: String) -> Int {
+        let s1Array = Array(s1)
+        let s2Array = Array(s2)
+        let s1Count = s1Array.count
+        let s2Count = s2Array.count
+        
+        var matrix = Array(repeating: Array(repeating: 0, count: s2Count + 1), count: s1Count + 1)
+        
+        for i in 0...s1Count {
+            matrix[i][0] = i
+        }
+        for j in 0...s2Count {
+            matrix[0][j] = j
+        }
+        
+        for i in 1...s1Count {
+            for j in 1...s2Count {
+                let cost = s1Array[i-1] == s2Array[j-1] ? 0 : 1
+                matrix[i][j] = min(
+                    matrix[i-1][j] + 1,      // deletion
+                    matrix[i][j-1] + 1,      // insertion
+                    matrix[i-1][j-1] + cost  // substitution
+                )
+            }
+        }
+        
+        return matrix[s1Count][s2Count]
     }
     
     func calculateSimilarity(expected: String, recognized: String) -> Float {
@@ -522,5 +617,172 @@ enum SpeechServiceError: LocalizedError {
         case .noRecognitionResult:
             return "No recognition result received"
         }
+    }
+}
+
+// MARK: - Audio File Analysis Extension
+extension SpeechService {
+    
+    /// Analyze an audio file to extract precise word timings using Speech framework
+    func analyzeAudioFile(at url: URL, expectedText: String) async throws -> [WordTiming] {
+        print("🎯 [SpeechService] Starting audio file analysis for precise word timings")
+        print("📄 Expected text: '\(expectedText)'")
+        print("🎵 Audio file: \(url.lastPathComponent)")
+        
+        // Verify audio file exists
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            print("❌ Audio file not found at: \(url.path)")
+            throw SpeechServiceError.audioFileNotFound(path: url.path)
+        }
+        
+        // Set up recognizer for the expected text language
+        setupRecognizerForText(expectedText)
+        
+        guard let speechRecognizer = speechRecognizer, speechRecognizer.isAvailable else {
+            print("❌ Speech recognizer not available")
+            throw SpeechServiceError.recognizerUnavailable(locale: "auto-detected")
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            let request = SFSpeechURLRecognitionRequest(url: url)
+            request.shouldReportPartialResults = false // We only want the final result
+            
+            let task = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+                if let error = error {
+                    print("❌ Audio analysis failed: \(error.localizedDescription)")
+                    continuation.resume(throwing: SpeechServiceError.recognitionFailed)
+                    return
+                }
+                
+                guard let result = result else {
+                    print("⚠️ No analysis result received")
+                    return
+                }
+                
+                if result.isFinal {
+                    print("✅ Audio analysis complete")
+                    let wordTimings = self?.extractWordTimings(from: result, expectedText: expectedText) ?? []
+                    print("🎯 Extracted \(wordTimings.count) word timings")
+                    continuation.resume(returning: wordTimings)
+                }
+            }
+            
+            // Store task reference to prevent deallocation
+            self.recognitionTask = task
+        }
+    }
+    
+    /// Extract word timings from SFSpeechRecognitionResult
+    private func extractWordTimings(from result: SFSpeechRecognitionResult, expectedText: String) -> [WordTiming] {
+        let segments = result.bestTranscription.segments
+        let expectedWords = expectedText.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }
+        
+        print("🔍 Processing \(segments.count) segments for \(expectedWords.count) expected words")
+        
+        var wordTimings: [WordTiming] = []
+        var expectedWordIndex = 0
+        
+        for segment in segments {
+            let segmentText = segment.substring.lowercased().trimmingCharacters(in: .punctuationCharacters)
+            let segmentWords = segmentText.components(separatedBy: .whitespacesAndNewlines)
+                .filter { !$0.isEmpty }
+            
+            // Calculate time per word in this segment
+            let timePerWordInSegment = segmentWords.count > 0 ? segment.duration / Double(segmentWords.count) : 0
+            
+            for (wordIndexInSegment, segmentWord) in segmentWords.enumerated() {
+                // Find matching expected word
+                if expectedWordIndex < expectedWords.count {
+                    let expectedWord = expectedWords[expectedWordIndex]
+                    
+                    // Check if this segment word matches the expected word
+                    let similarity = calculateWordSimilarity(expectedWord, segmentWord)
+                    
+                    if similarity > 0.6 || segmentWord.contains(expectedWord) || expectedWord.contains(segmentWord) {
+                        // Calculate precise timing for this word within the segment
+                        let wordStartTime = segment.timestamp + (timePerWordInSegment * Double(wordIndexInSegment))
+                        let wordDuration = timePerWordInSegment
+                        
+                        let wordTiming = WordTiming(
+                            word: expectedWord,
+                            startTime: wordStartTime,
+                            duration: wordDuration,
+                            confidence: segment.confidence
+                        )
+                        
+                        wordTimings.append(wordTiming)
+                        print("📍 Word '\(expectedWord)' -> \(String(format: "%.2f", wordStartTime))s-\(String(format: "%.2f", wordStartTime + wordDuration))s")
+                        
+                        expectedWordIndex += 1
+                    }
+                }
+            }
+        }
+        
+        // Fill in any missing words with estimated timings
+        if wordTimings.count < expectedWords.count {
+            print("⚠️ Only found \(wordTimings.count)/\(expectedWords.count) words, filling gaps with estimates")
+            wordTimings = fillMissingWordTimings(wordTimings: wordTimings, expectedWords: expectedWords, totalDuration: result.bestTranscription.segments.last?.timestamp ?? 0)
+        }
+        
+        return wordTimings
+    }
+    
+    /// Fill missing word timings with reasonable estimates
+    private func fillMissingWordTimings(wordTimings: [WordTiming], expectedWords: [String], totalDuration: TimeInterval) -> [WordTiming] {
+        var completeTimings: [WordTiming] = []
+        
+        // If we have some timings, use them as anchors
+        if !wordTimings.isEmpty {
+            var currentTimingIndex = 0
+            
+            for (_, expectedWord) in expectedWords.enumerated() {
+                if currentTimingIndex < wordTimings.count && 
+                   wordTimings[currentTimingIndex].word.lowercased() == expectedWord.lowercased() {
+                    // Use actual timing
+                    completeTimings.append(wordTimings[currentTimingIndex])
+                    currentTimingIndex += 1
+                } else {
+                    // Estimate timing based on surrounding words
+                    let estimatedStartTime: TimeInterval
+                    let estimatedDuration: TimeInterval = 0.5 // Default duration
+                    
+                    if completeTimings.isEmpty {
+                        estimatedStartTime = 0
+                    } else {
+                        let lastTiming = completeTimings.last!
+                        estimatedStartTime = lastTiming.endTime
+                    }
+                    
+                    let estimatedTiming = WordTiming(
+                        word: expectedWord,
+                        startTime: estimatedStartTime,
+                        duration: estimatedDuration,
+                        confidence: 0.5 // Lower confidence for estimated
+                    )
+                    
+                    completeTimings.append(estimatedTiming)
+                    print("📊 Estimated timing for '\(expectedWord)' at \(String(format: "%.2f", estimatedStartTime))s")
+                }
+            }
+        } else {
+            // No timings found, use simple even distribution
+            print("⚠️ No word timings found, using even distribution fallback")
+            let timePerWord = totalDuration > 0 ? totalDuration / Double(expectedWords.count) : 0.5
+            
+            for (index, expectedWord) in expectedWords.enumerated() {
+                let timing = WordTiming(
+                    word: expectedWord,
+                    startTime: Double(index) * timePerWord,
+                    duration: timePerWord,
+                    confidence: 0.3 // Low confidence for fallback
+                )
+                completeTimings.append(timing)
+            }
+        }
+        
+        return completeTimings
     }
 }

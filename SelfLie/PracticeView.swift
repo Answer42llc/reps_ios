@@ -15,6 +15,15 @@ struct PracticeView: View {
     @State private var similarity: Float = 0.0
     @State private var silentRecordingDetected = false
     
+    // Word highlighting states
+    @State private var highlightedWordIndices: Set<Int> = []
+    @State private var currentWordIndex: Int = -1
+    @State private var wordTimings: [WordTiming] = []
+    @State private var audioDuration: TimeInterval = 0
+    
+    // Replay functionality
+    @State private var isReplaying = false
+    
     // Smart recording stop
     @State private var maxRecordingTimer: Timer?
     @State private var recordingStartTime: Date?
@@ -39,32 +48,48 @@ struct PracticeView: View {
     }
     
     var body: some View {
-        VStack(spacing: 32) {
-            headerView
+        ZStack {
+            // Background color
+            Color(red: 0.976, green: 0.976, blue: 0.976) // #f9f9f9
+                .ignoresSafeArea()
             
-            affirmationTextView
-            
-            practiceSection
-            
-            if practiceState == .analyzing {
-                analysisView
+            // Top section with close button
+            VStack{
+                HStack {
+                    Button(action: {
+                        cleanup()
+                        dismiss()
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.title2)
+                            .foregroundColor(.black)
+                    }
+                    .padding(.leading, 20)
+                    .padding(.top, 20)
+                    
+                    Spacer()
+                }
+                Spacer()
             }
-            
-            if practiceState == .completed {
-                actionButtons
-            }
-            
-            Spacer()
-            
-            if practiceState != .completed {
-                cantSpeakButton
+
+            VStack(spacing: 0) {
+                
+                Spacer()
+                
+                // Main card container
+                cardView
+                
+                Spacer()
+                
+                // External action area (outside card)
+                externalActionArea
+                    .padding(.bottom, 40)
             }
         }
-        .padding()
-        .foregroundColor(.white)
         .onAppear {
             appearTime = Date()
             print("⏰ [PracticeView] View appeared at \(elapsedTime(from: appearTime))")
+            setupServiceCallbacks()
             Task {
                 await startPracticeFlow()
             }
@@ -93,254 +118,181 @@ struct PracticeView: View {
         }
     }
     
-    private var headerView: some View {
-        VStack(spacing: 8) {
-            Text("Practice Session")
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            Text("Progress: \(affirmation.progressText)")
-                .font(.body)
-                .foregroundColor(.gray)
-        }
-    }
     
     private var affirmationTextView: some View {
-        Text(affirmation.text)
-            .font(.title3)
-            .fontWeight(.medium)
-            .multilineTextAlignment(.center)
-            .padding()
-            .background(Color.gray.opacity(0.2))
-            .cornerRadius(12)
-    }
-    
-    private var practiceSection: some View {
-        VStack(spacing: 24) {
-            practiceIcon
-            practiceStatusText
-            
-            if practiceState == .completed && !silentRecordingDetected && similarity > 0 {
-                successFeedback
-            }
-        }
-    }
-    
-    private var practiceIcon: some View {
-        Group {
-            switch practiceState {
-            case .initial:
-                Image(systemName: "play.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.purple)
-            case .playing:
-                Image(systemName: "speaker.wave.2.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.blue)
-                    .scaleEffect(1.1)
-                    .animation(.easeInOut(duration: 1).repeatForever(), value: practiceState == .playing)
-            case .recording:
-                Image(systemName: "mic.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.red)
-                    .scaleEffect(1.2)
-                    .animation(.easeInOut(duration: 0.5).repeatForever(), value: practiceState == .recording)
-            case .analyzing:
-                Image(systemName: "waveform.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(.orange)
-            case .completed:
-                Image(systemName: similarity >= 0.8 ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .font(.system(size: 80))
-                    .foregroundColor(similarity >= 0.8 ? .green : .red)
-            }
-        }
-    }
-    
-    private var practiceStatusText: some View {
-        Group {
-            switch practiceState {
-            case .initial:
-                Text("Starting practice session...")
-            case .playing:
-                VStack(spacing: 4) {
-                    Text("Listen carefully")
-                        .font(.headline)
-                    Text("Pay attention to your voice")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                }
-            case .recording:
-                VStack(spacing: 4) {
-                    Text("Now speak aloud")
-                        .font(.headline)
-                    Text("Repeat the affirmation clearly")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
-                }
-            case .analyzing:
-                Text("Verifying your speech...")
-            case .completed:
-                if silentRecordingDetected {
-                    VStack(spacing: 4) {
-                        Text("No voice detected")
-                            .font(.headline)
-                            .foregroundColor(.orange)
-                        Text("Please speak clearly during recording")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                    }
-                } else {
-                    Text(similarity >= 0.8 ? "Excellent! You did great!" : "Keep practicing, you can do better!")
-                }
-            }
-        }
-        .multilineTextAlignment(.center)
-    }
-    
-    private var successFeedback: some View {
-        VStack(spacing: 8) {
-            if similarity >= 0.8 {
-                Text("🎉 Well done!")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(.green)
-                
-                Text("Your count increased to \(affirmation.repeatCount + 1)")
-                    .font(.body)
-                    .foregroundColor(.gray)
-            } else {
-                Text("Keep practicing!")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.orange)
-                
-                Text("Accuracy: \(Int(similarity * 100))%")
-                    .font(.body)
-                    .foregroundColor(.gray)
-            }
-        }
-        .padding()
-        .background(similarity >= 0.8 ? Color.green.opacity(0.2) : Color.orange.opacity(0.2))
-        .cornerRadius(12)
-    }
-    
-    private var analysisView: some View {
-        VStack {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                .scaleEffect(1.5)
-        }
-    }
-    
-    private var cantSpeakButton: some View {
-        Button("Can't speak now") {
-            cleanup()
-            dismiss()
-        }
-        .font(.headline)
-        .foregroundColor(.gray)
-        .padding()
-        .background(Color.gray.opacity(0.2))
-        .cornerRadius(8)
-    }
-    
-    private var actionButtons: some View {
-        VStack(spacing: 16) {
-            if silentRecordingDetected {
-                Button("Try Speaking Again") {
-                    Task {
-                        // Immediately reset state for better UX
-                        await MainActor.run {
-                            practiceState = .initial
-                            similarity = 0.0
-                            silentRecordingDetected = false
-                        }
-                        
-                        cleanup()
-                        // Pre-prepare a new recorder for direct recording
-                        do {
-                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔧 Pre-preparing new recorder for Try Speaking Again")
-                            let prepareStartTime = Date()
-                            try await audioService.prepareRecording(to: practiceURL)
-                            let prepareDuration = Date().timeIntervalSince(prepareStartTime) * 1000
-                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ New recorder prepared for direct recording in \(String(format: "%.0fms", prepareDuration))")
-                        } catch {
-                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ Failed to prepare new recorder: \(error.localizedDescription)")
-                        }
-                        await startRecording()
-                    }
-                }
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color.orange)
-                .cornerRadius(12)
-                
-                Button("Done for Now") {
-                    cleanup()
-                    dismiss()
-                }
-                .font(.subheadline)
-                .foregroundColor(.gray)
-                .padding(.vertical, 8)
-            } else if similarity >= 0.8 {
-                Button("I'm Great! 🎉") {
-                    cleanup()
-                    dismiss()
-                }
-                .font(.headline)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color.green)
-                .cornerRadius(12)
-            } else {
-                Button("Try Again") {
-                    Task {
-                        // Immediately reset state for better UX
-                        await MainActor.run {
-                            practiceState = .initial
-                            similarity = 0.0
-                            silentRecordingDetected = false
-                        }
-                        
-                        cleanup()
-                        // Pre-prepare a new recorder for direct recording
-                        do {
-                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔧 Pre-preparing new recorder for Try Again")
-                            let prepareStartTime = Date()
-                            try await audioService.prepareRecording(to: practiceURL)
-                            let prepareDuration = Date().timeIntervalSince(prepareStartTime) * 1000
-                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ New recorder prepared for direct recording in \(String(format: "%.0fms", prepareDuration))")
-                        } catch {
-                            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ Failed to prepare new recorder: \(error.localizedDescription)")
-                        }
-                        await startRecording()
-                    }
-                }
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color.blue)
-                .cornerRadius(12)
-                
-                Button("Done for Now") {
-                    cleanup()
-                    dismiss()
-                }
-                .font(.subheadline)
-                .foregroundColor(.gray)
-                .padding(.vertical, 8)
-            }
-        }
+        WordHighlighter(
+            text: affirmation.text,
+            highlightedWordIndices: highlightedWordIndices,
+            currentWordIndex: currentWordIndex
+        )
         .padding(.horizontal)
     }
+    
+    
+    
+    
+    private var cardView: some View {
+        VStack(spacing: 0) {
+            // Card content will go here
+            cardContent
+        }
+        .background(Color.white)
+        .cornerRadius(20)
+        .padding(. horizontal)
+        .padding(.vertical, 48)
+    }
+    
+    private var cardContent: some View {
+        VStack(spacing: 24) {
+            // Status area
+            statusArea
+            
+            // Content area
+            contentArea
+            
+            // Action area (inside card)
+            if practiceState == .completed && (silentRecordingDetected || similarity < 0.8) {
+                cardActionArea
+            }
+        }
+        .padding(24)
+    }
+    
+    private var statusArea: some View {
+        VStack(spacing: 8) {
+            if practiceState != .completed {
+                // Show status during active states
+                Text(currentStatusText)
+                .fontDesign(.monospaced)
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(Color.purple)
+                .cornerRadius(20)
+                .disabled(true)
+            } else if !silentRecordingDetected && similarity >= 0.8 {
+                // Success state shows checkmark
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.white)
+                    Text("Great!")
+                        .fontWeight(.semibold)
+                }
+                .font(.headline)
+                .fontDesign(.default)
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(Color.purple)
+                .cornerRadius(20)
+            }else{
+                Label{
+                    Text("Try Again")
+                } icon: {
+                    Image(systemName: "xmark")
+                }
+                .foregroundStyle(.secondary)
+                .fontWeight(.semibold)
+                .fontDesign(.default)
+            }
+            // For failure states, no status indicator is shown (matches design)
+        }
+    }
+    
+    private var contentArea: some View {
+        VStack(spacing: 16) {
+            // Main affirmation text
+            affirmationTextView
+            // Replay button (shown after recording ends)
+            if practiceState == .completed {
+                replayButton
+            }
+
+            // Hint text
+            hintText
+            
+        }
+    }
+    
+    private var cardActionArea: some View {
+        Button("Restart") {
+            Task {
+                await restartPractice()
+            }
+        }
+        .font(.headline)
+        .fontWeight(.semibold)
+        .foregroundColor(.white)
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(Color.purple)
+        .cornerRadius(25)
+    }
+    
+    private var externalActionArea: some View {
+        VStack {
+            if practiceState != .completed {
+                Button("Can't speak now") {
+                    cleanup()
+                    dismiss()
+                }
+                .font(.headline)
+                .foregroundColor(.gray)
+            } else if !silentRecordingDetected && similarity >= 0.8 {
+                Button("Done") {
+                    cleanup()
+                    dismiss()
+                }
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: 50)
+                .background(Color.purple)
+                .cornerRadius(25)
+                .padding(.horizontal, 20)
+            }
+        }
+    }
+    
+    private var currentStatusText: String {
+        switch practiceState {
+        case .initial, .playing:
+            return "Listen..."
+        case .recording:
+            return "Speak now..."
+        case .analyzing:
+            return "Processing..."
+        case .completed:
+            return ""
+        }
+    }
+    
+    private var hintText: some View {
+        Text("Your brain believes your own words most.")
+            .font(.body)
+            .foregroundColor(.gray)
+            .multilineTextAlignment(.center)
+    }
+    
+    private var replayButton: some View {
+        Button(action: {
+            Task {
+                await replayOriginalAudio()
+            }
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: "play.fill")
+                    .font(.caption)
+                Text("Replay")
+                    .font(.headline)
+            }
+            .foregroundColor(.purple)
+        }
+    }
+    
     
     private func startPracticeFlow() async {
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Starting practice flow for affirmation: '\(affirmation.text)'")
@@ -446,6 +398,9 @@ struct PracticeView: View {
         let stateUpdateStartTime = Date()
         practiceState = .playing
         silentRecordingDetected = false
+        // Reset highlighting for fresh playback
+        highlightedWordIndices.removeAll()
+        currentWordIndex = -1
         let stateUpdateDuration = Date().timeIntervalSince(stateUpdateStartTime) * 1000
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚡ PRECISE: State update completed in \(String(format: "%.0fms", stateUpdateDuration))")
         
@@ -735,8 +690,19 @@ struct PracticeView: View {
         await MainActor.run {
             similarity = 0.0
             silentRecordingDetected = false
+            // Reset text highlighting to original colors
+            resetTextHighlighting()
+            isReplaying = false
         }
         await startPracticeFlow()
+    }
+    
+    private func resetTextHighlighting() {
+        // Reset all text colors to original state unless it's a successful completion
+        if silentRecordingDetected || similarity < 0.8 {
+            highlightedWordIndices.removeAll()
+            currentWordIndex = -1
+        }
     }
     
     private func cleanup() {
@@ -772,6 +738,95 @@ struct PracticeView: View {
             }
         }
     }
+    
+    private func setupServiceCallbacks() {
+        // Audio service playback progress callback
+        audioService.onPlaybackProgress = { currentTime, duration in
+            
+            Task { @MainActor in
+                self.audioDuration = duration
+                
+                // Initialize word timings if not already done
+                self.initializeWordTimings()
+                
+                // Update current word index based on playback progress
+                let newWordIndex = WordHighlighter.getWordIndexForTime(currentTime, wordTimings: self.wordTimings)
+                
+                if newWordIndex != self.currentWordIndex {
+                    print("🎯 [PracticeView] Updating word index from \(self.currentWordIndex) to \(newWordIndex) at time \(String(format: "%.2f", currentTime))s")
+                    self.currentWordIndex = newWordIndex
+                    
+                    // Update highlighted words to include all words up to current
+                    if newWordIndex >= 0 {
+                        self.highlightedWordIndices = Set(0...newWordIndex)
+                        print("🎯 [PracticeView] Highlighted words: \(self.highlightedWordIndices)")
+                    } else {
+                        self.highlightedWordIndices.removeAll()
+                    }
+                }
+            }
+        }
+        
+        // Speech service word recognition callback
+        speechService.onWordRecognized = { recognizedText, recognizedWordIndices in
+            
+            Task { @MainActor in
+                self.highlightedWordIndices = recognizedWordIndices
+                // Set current word index to the highest recognized word
+                if let maxIndex = recognizedWordIndices.max() {
+                    self.currentWordIndex = maxIndex
+                }
+            }
+        }
+    }
+    
+    private func replayOriginalAudio() async {
+        print("🔄 [PracticeView] Replaying original audio")
+        guard let audioURL = affirmation.audioURL else {
+            showError("Audio file not found")
+            return
+        }
+        
+        // Reset highlighting state and ensure callbacks are set up
+        await MainActor.run {
+            isReplaying = true
+            highlightedWordIndices.removeAll()
+            currentWordIndex = -1
+            // Ensure service callbacks are properly set up for replay
+            setupServiceCallbacks()
+        }
+        
+        do {
+            try await audioService.playAudio(from: audioURL)
+        } catch {
+            await MainActor.run {
+                showError("Failed to replay audio: \(error.localizedDescription)")
+            }
+        }
+        
+        await MainActor.run {
+            isReplaying = false
+            // Keep highlighting state after replay so user can see final state
+            // Don't reset highlighting after replay - let user see the complete highlighted text
+        }
+    }
+    
+    /// Initialize word timings using precise data from the affirmation
+    private func initializeWordTimings() {
+        // If we already have timings, don't recalculate
+        if !wordTimings.isEmpty {
+            return
+        }
+        
+        // Load precise word timings from the affirmation
+        wordTimings = affirmation.wordTimings
+        print("✅ [PracticeView] Loaded precise word timings: \(wordTimings.count) words")
+        
+        // Log timing details for debugging
+        for (index, timing) in wordTimings.enumerated() {
+            print("📍 Word \(index): '\(timing.word)' at \(String(format: "%.2f", timing.startTime))s-\(String(format: "%.2f", timing.endTime))s")
+        }
+    }
 }
 
 enum PracticeState {
@@ -786,7 +841,7 @@ enum PracticeState {
     let context = PersistenceController.preview.container.viewContext
     let sampleAffirmation = Affirmation(context: context)
     sampleAffirmation.id = UUID()
-    sampleAffirmation.text = "I never smoke, because smoking is smelly"
+    sampleAffirmation.text = "I never compare to others, because that make no sense"
     sampleAffirmation.audioFileName = "sample.m4a"
     sampleAffirmation.repeatCount = 84
     sampleAffirmation.targetCount = 1000
