@@ -51,6 +51,7 @@ struct DashboardView: View {
         .fontDesign(.serif)
         .background(Color(hex: "#f9f9f9"))
         .navigationTitle("My Reps")
+        .ignoresSafeArea(.all, edges: .bottom)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -67,13 +68,7 @@ struct DashboardView: View {
             PracticeView(affirmation: affirmation)
         }
     }
-    
-    private var headerView: some View {
-        Text("I AM")
-            .font(.largeTitle)
-            .fontWeight(.bold)
-            .padding(.top)
-    }
+
     
     private var emptyStateView: some View {
         VStack(spacing: 20) {
@@ -106,6 +101,7 @@ struct DashboardView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
+            .padding(.bottom,32)
         }
     }
     
@@ -128,20 +124,18 @@ struct AffirmationCardView: View {
     
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center,spacing: 0) {
                     Text("🔥")
-                        .font(.title3)
-                        .fontDesign(.serif)
                     Text("\(affirmation.repeatCount)/1000")
-                        .font(.headline)
-                        .fontDesign(.serif)
                         .foregroundColor(.primary)
                 }
+                .font(.subheadline)
+
                 
                 Text(affirmation.text)
-                    .font(.body)
-                    .fontDesign(.serif)
+                    .font(.title3)
+//                    .fontWeight(.semibold)
                     .lineLimit(nil)
                     .foregroundColor(.primary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -157,8 +151,10 @@ struct AffirmationCardView: View {
         }
         .padding(20)
         .background(Color.white)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        .cornerRadius(20)
+        .onTapGesture {
+            onPlayTapped()
+        }
     }
 }
 
