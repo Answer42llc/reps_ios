@@ -16,8 +16,8 @@ struct PracticeView: View {
     @State private var silentRecordingDetected = false
     
     // Word highlighting states
-    @State private var highlightedWordIndices: Set<Int> = []
-    @State private var currentWordIndex: Int = -1
+    @State internal var highlightedWordIndices: Set<Int> = []
+    @State internal var currentWordIndex: Int = -1
     @State private var wordTimings: [WordTiming] = []
     @State private var audioDuration: TimeInterval = 0
     
@@ -460,6 +460,11 @@ struct PracticeView: View {
             recordingStartTime = Date()
             hasGoodSimilarity = false
             
+            // Issue 2 Fix: Reset text highlighting when starting recording
+            highlightedWordIndices.removeAll()
+            currentWordIndex = -1
+            print("🎯 [PracticeView] Reset text highlighting for recording phase")
+            
             let mainActorExitTime = Date()
             let mainActorDuration = mainActorExitTime.timeIntervalSince(mainActorEntryTime) * 1000
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚡ PRECISE: MainActor.run completed in \(String(format: "%.0fms", mainActorDuration))")
@@ -539,6 +544,11 @@ struct PracticeView: View {
             practiceState = .recording
             recordingStartTime = Date()
             hasGoodSimilarity = false
+            
+            // Issue 2 Fix: Reset text highlighting when starting recording
+            highlightedWordIndices.removeAll()
+            currentWordIndex = -1
+            print("🎯 [PracticeView] Reset text highlighting for recording phase")
         }
         
         let recordingSetupStartTime = Date()
@@ -812,21 +822,116 @@ struct PracticeView: View {
     
     /// Initialize word timings using precise data from the affirmation
     private func initializeWordTimings() {
-        // If we already have timings, don't recalculate
-        if !wordTimings.isEmpty {
+        // Load precise word timings from the affirmation
+        wordTimings = affirmation.wordTimings
+        
+        // Check if we need to regenerate timings for Chinese text
+        let needsRegeneration = shouldRegenerateTimings()
+        
+        if needsRegeneration {
+            print("🔄 [PracticeView] Chinese text detected with incorrect timings, regenerating...")
+            Task {
+                await regenerateWordTimings()
+            }
             return
         }
         
-        // Load precise word timings from the affirmation
-        wordTimings = affirmation.wordTimings
-        print("✅ [PracticeView] Loaded precise word timings: \(wordTimings.count) words")
+        // Skip if we already have proper timings
+        if !wordTimings.isEmpty {
+            print("✅ [PracticeView] Loaded precise word timings: \(wordTimings.count) words")
+            
+            // Log timing details for debugging
+            for (index, timing) in wordTimings.enumerated() {
+                print("📍 Word \(index): '\(timing.word)' at \(String(format: "%.2f", timing.startTime))s-\(String(format: "%.2f", timing.endTime))s")
+            }
+            return
+        }
         
-        // Log timing details for debugging
-        for (index, timing) in wordTimings.enumerated() {
-            print("📍 Word \(index): '\(timing.word)' at \(String(format: "%.2f", timing.startTime))s-\(String(format: "%.2f", timing.endTime))s")
+        // If no timings exist, create basic fallback
+        print("⚠️ [PracticeView] No word timings available, using fallback")
+        createFallbackTimings()
+    }
+    
+    private func shouldRegenerateTimings() -> Bool {
+        // Check if it's Chinese text with only 1 timing (indicates old English-style processing)
+        let isChinese = LanguageUtils.isChineseText(affirmation.text)
+        let hasOnlyOneWord = wordTimings.count == 1
+        let expectedCharCount = LanguageUtils.splitTextForLanguage(affirmation.text).count
+        
+        if isChinese && hasOnlyOneWord && expectedCharCount > 1 {
+            print("🀄 [PracticeView] Chinese text '\(affirmation.text)' has only 1 timing but should have \(expectedCharCount) characters")
+            return true
+        }
+        
+        return false
+    }
+    
+    private func regenerateWordTimings() async {
+        guard let audioURL = affirmation.audioURL,
+              FileManager.default.fileExists(atPath: audioURL.path) else {
+            print("❌ [PracticeView] Cannot regenerate: audio file not found")
+            return
+        }
+        
+        do {
+            print("🎯 [PracticeView] Starting background regeneration of word timings")
+            let speechService = SpeechService()
+            let newWordTimings = try await speechService.analyzeAudioFile(at: audioURL, expectedText: affirmation.text)
+            
+            await MainActor.run {
+                // Update both memory and persistent storage
+                self.wordTimings = newWordTimings
+                self.affirmation.wordTimings = newWordTimings
+                
+                // Save to Core Data
+                do {
+                    try PersistenceController.shared.container.viewContext.save()
+                    print("✅ [PracticeView] Regenerated and saved \(newWordTimings.count) word timings")
+                    
+                    // Log new timing details
+                    for (index, timing) in newWordTimings.enumerated() {
+                        print("📍 New Word \(index): '\(timing.word)' at \(String(format: "%.2f", timing.startTime))s-\(String(format: "%.2f", timing.endTime))s")
+                    }
+                } catch {
+                    print("❌ [PracticeView] Failed to save regenerated timings: \(error)")
+                }
+            }
+        } catch {
+            print("❌ [PracticeView] Failed to regenerate word timings: \(error)")
+            await MainActor.run {
+                createFallbackTimings()
+            }
         }
     }
+    
+    private func createFallbackTimings() {
+        // Create simple fallback timings based on text length
+        let words = LanguageUtils.splitTextForLanguage(affirmation.text)
+        let timePerWord: TimeInterval = audioDuration > 0 ? audioDuration / Double(words.count) : 0.5
+        
+        wordTimings = words.enumerated().map { index, word in
+            WordTiming(
+                word: word,
+                startTime: Double(index) * timePerWord,
+                duration: timePerWord,
+                confidence: 0.5
+            )
+        }
+        
+        print("📊 [PracticeView] Created \(wordTimings.count) fallback timings")
+    }
 }
+
+// MARK: - Testing Extensions
+#if DEBUG
+extension PracticeView {
+    func simulateRecordingStart() {
+        // Reset highlighting state for testing
+        highlightedWordIndices.removeAll()
+        currentWordIndex = -1
+    }
+}
+#endif
 
 enum PracticeState {
     case initial

@@ -201,6 +201,10 @@ class AudioService: NSObject {
             return 
         }
         
+        // CRITICAL FIX: Setup audio session for playback before creating AVAudioPlayer
+        print("⏰ [AudioService] 🔧 Setting up audio session for playback")
+        try await AudioSessionManager.shared.setupForPlayAndRecord()
+        
         do {
             print("⏰ [AudioService] 🔧 Creating AVAudioPlayer")
             let playerCreateStartTime = Date()
@@ -346,22 +350,101 @@ class AudioSessionManager {
     
     private init() {}
     
+    // Issue 1 Fix: AirPods audio routing support
+    func isBluetoothAudioDeviceConnected() -> Bool {
+        let route = AVAudioSession.sharedInstance().currentRoute
+        let hasBluetoothOutput = route.outputs.contains { output in
+            output.portType == .bluetoothA2DP || 
+            output.portType == .bluetoothHFP ||
+            output.portType == .bluetoothLE
+        }
+        
+        let hasBluetoothInput = route.inputs.contains { input in
+            input.portType == .bluetoothHFP ||
+            input.portType == .bluetoothLE
+        }
+        
+        let result = hasBluetoothOutput || hasBluetoothInput
+        
+        // Enhanced logging for debugging
+        print("🎧 [AudioSessionManager] Bluetooth detection:")
+        print("   Current route: \(route)")
+        print("   Outputs: \(route.outputs.map { "\($0.portName) (\($0.portType.rawValue))" })")
+        print("   Inputs: \(route.inputs.map { "\($0.portName) (\($0.portType.rawValue))" })")
+        print("   Has Bluetooth Output: \(hasBluetoothOutput)")
+        print("   Has Bluetooth Input: \(hasBluetoothInput)")
+        print("   Final Result: \(result)")
+        
+        return result
+    }
+    
+    func getAudioSessionOptions(hasBluetoothDevice: Bool) -> AVAudioSession.CategoryOptions {
+        if hasBluetoothDevice {
+            // For AirPods and Bluetooth devices: allow Bluetooth A2DP and mix with others
+            return [.allowBluetoothA2DP, .mixWithOthers]
+        } else {
+            // For phone speaker: default to speaker with mix capability
+            return [.defaultToSpeaker, .mixWithOthers]
+        }
+    }
+    
     func setupForPlayAndRecord() async throws {
-        guard !isConfiguredForPlayAndRecord else { return }
+        guard !isConfiguredForPlayAndRecord else { 
+            // Even if already configured, check if we need to update routing
+            try await updateAudioRouting()
+            return 
+        }
         
         print("⏰ [AudioSessionManager] 🔧 Setting up audio session for play and record")
         let setupStartTime = Date()
         
+        // Issue 1 Fix: Detect connected audio devices and choose appropriate routing
+        let hasBluetoothDevice = isBluetoothAudioDeviceConnected()
+        let options = getAudioSessionOptions(hasBluetoothDevice: hasBluetoothDevice)
+        
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: options)
             try audioSession.setActive(true)
+            
+            // Force audio routing to preferred output
+            try await forceAudioRouting(hasBluetoothDevice: hasBluetoothDevice)
+            
             isConfiguredForPlayAndRecord = true
             
             let setupDuration = Date().timeIntervalSince(setupStartTime) * 1000
-            print("⏰ [AudioSessionManager] ✅ Audio session configured in \(String(format: "%.0fms", setupDuration))")
+            let deviceType = hasBluetoothDevice ? "Bluetooth (AirPods/Headphones)" : "Phone Speaker"
+            print("⏰ [AudioSessionManager] ✅ Audio session configured for \(deviceType) in \(String(format: "%.0fms", setupDuration))")
         } catch {
             print("⏰ [AudioSessionManager] ❌ Failed to setup audio session: \(error.localizedDescription)")
             throw error
+        }
+    }
+    
+    private func updateAudioRouting() async throws {
+        let hasBluetoothDevice = isBluetoothAudioDeviceConnected()
+        try await forceAudioRouting(hasBluetoothDevice: hasBluetoothDevice)
+    }
+    
+    private func forceAudioRouting(hasBluetoothDevice: Bool) async throws {
+        if hasBluetoothDevice {
+            print("🎧 [AudioSessionManager] Forcing audio routing to Bluetooth device")
+            
+            // Override the output port to preferred Bluetooth device
+            do {
+                try audioSession.overrideOutputAudioPort(.none) // Clear any speaker override
+                print("🎧 [AudioSessionManager] ✅ Cleared speaker override, should route to Bluetooth")
+            } catch {
+                print("🎧 [AudioSessionManager] ⚠️ Failed to clear speaker override: \(error.localizedDescription)")
+            }
+            
+            // Additional check: verify the routing worked
+            let route = audioSession.currentRoute
+            let hasBluetoothOutput = route.outputs.contains { $0.portType == .bluetoothA2DP }
+            print("🎧 [AudioSessionManager] Post-routing check - Bluetooth output active: \(hasBluetoothOutput)")
+            
+        } else {
+            print("📱 [AudioSessionManager] Forcing audio routing to speaker")
+            try audioSession.overrideOutputAudioPort(.speaker)
         }
     }
     

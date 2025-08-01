@@ -8,8 +8,8 @@ struct WordHighlighter: View {
     @State private var words: [String] = []
     
     var body: some View {
-        let wordArray = text.components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
+        // Issue 3 Fix: Use LanguageUtils for proper text splitting (words for English, characters for Chinese)
+        let wordArray = LanguageUtils.splitTextForLanguage(text)
         
         return VStack(alignment: .leading, spacing: 0) {
             wrappedText(words: wordArray)
@@ -23,7 +23,9 @@ struct WordHighlighter: View {
         
         return VStack(alignment: .center, spacing: 8) {
             ForEach(Array(lines.enumerated()), id: \.offset) { lineIndex, lineWords in
-                HStack(spacing: 4) {
+                // Issue 3 Fix: Use different spacing for Chinese vs English
+                let spacing: CGFloat = LanguageUtils.isChineseText(text) ? 0 : 4
+                HStack(spacing: spacing) {
                     ForEach(Array(lineWords.enumerated()), id: \.offset) { wordIndexInLine, word in
                         let globalWordIndex = calculateGlobalIndex(lineIndex: lineIndex, wordIndexInLine: wordIndexInLine, lines: lines)
                         
@@ -39,6 +41,38 @@ struct WordHighlighter: View {
     }
     
     private func createLines(from words: [String]) -> [[String]] {
+        // Issue 3 Fix: Handle Chinese and English text differently for line wrapping
+        if LanguageUtils.isChineseText(text) {
+            return createChineseLines(from: words)
+        } else {
+            return createEnglishLines(from: words)
+        }
+    }
+    
+    /// Create lines for Chinese text (character-based, simpler wrapping)
+    func createChineseLines(from words: [String]) -> [[String]] {
+        var lines: [[String]] = []
+        var currentLine: [String] = []
+        let maxCharsPerLine = LanguageUtils.getRecommendedCharsPerLine(for: text)
+        
+        for word in words {
+            if currentLine.count >= maxCharsPerLine {
+                lines.append(currentLine)
+                currentLine = [word]
+            } else {
+                currentLine.append(word)
+            }
+        }
+        
+        if !currentLine.isEmpty {
+            lines.append(currentLine)
+        }
+        
+        return lines
+    }
+    
+    /// Create lines for English text (original logic with word-based measurement)
+    private func createEnglishLines(from words: [String]) -> [[String]] {
         var lineWords: [String] = []
         var lines: [[String]] = []
         let maxLineWidth: CGFloat = 280 // Approximate max width for mobile
@@ -110,9 +144,15 @@ extension WordHighlighter {
                 print("🎯 [WordHighlighter] Time \(String(format: "%.2f", time))s -> word index \(index) ('\(wordTiming.word)')")
                 return index
             }
-            // If time is before this word starts, highlight the previous word
+            // If time is before this word starts
             else if time < wordTiming.startTime {
-                let result = max(0, index - 1)
+                // If this is the first word and time is before it starts, no highlighting
+                if index == 0 {
+                    print("🎯 [WordHighlighter] Time \(String(format: "%.2f", time))s -> no highlighting (before first word)")
+                    return -1
+                }
+                // Otherwise, highlight the previous word
+                let result = index - 1
                 print("🎯 [WordHighlighter] Time \(String(format: "%.2f", time))s -> word index \(result) (before '\(wordTiming.word)')")
                 return result
             }

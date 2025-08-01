@@ -647,9 +647,18 @@ extension SpeechService {
             let request = SFSpeechURLRecognitionRequest(url: url)
             request.shouldReportPartialResults = false // We only want the final result
             
+            var hasResumed = false // Track if continuation has been resumed
+            
             let task = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+                // Prevent multiple resume calls
+                guard !hasResumed else { 
+                    print("⚠️ Recognition callback called after continuation was already resumed")
+                    return 
+                }
+                
                 if let error = error {
                     print("❌ Audio analysis failed: \(error.localizedDescription)")
+                    hasResumed = true
                     continuation.resume(throwing: SpeechServiceError.recognitionFailed)
                     return
                 }
@@ -663,6 +672,7 @@ extension SpeechService {
                     print("✅ Audio analysis complete")
                     let wordTimings = self?.extractWordTimings(from: result, expectedText: expectedText) ?? []
                     print("🎯 Extracted \(wordTimings.count) word timings")
+                    hasResumed = true
                     continuation.resume(returning: wordTimings)
                 }
             }
@@ -675,6 +685,19 @@ extension SpeechService {
     /// Extract word timings from SFSpeechRecognitionResult
     private func extractWordTimings(from result: SFSpeechRecognitionResult, expectedText: String) -> [WordTiming] {
         let segments = result.bestTranscription.segments
+        
+        // Issue 3 Fix: Handle Chinese and English text differently
+        if LanguageUtils.isChineseText(expectedText) {
+            print("🀄 Processing Chinese text with character-level timing")
+            return extractChineseWordTimings(segments: segments, expectedText: expectedText)
+        } else {
+            print("🔤 Processing English text with word-level timing")
+            return extractEnglishWordTimings(segments: segments, expectedText: expectedText)
+        }
+    }
+    
+    /// Extract word timings for English text (original logic)
+    private func extractEnglishWordTimings(segments: [SFTranscriptionSegment], expectedText: String) -> [WordTiming] {
         let expectedWords = expectedText.components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }
@@ -724,10 +747,154 @@ extension SpeechService {
         // Fill in any missing words with estimated timings
         if wordTimings.count < expectedWords.count {
             print("⚠️ Only found \(wordTimings.count)/\(expectedWords.count) words, filling gaps with estimates")
-            wordTimings = fillMissingWordTimings(wordTimings: wordTimings, expectedWords: expectedWords, totalDuration: result.bestTranscription.segments.last?.timestamp ?? 0)
+            wordTimings = fillMissingWordTimings(wordTimings: wordTimings, expectedWords: expectedWords, totalDuration: segments.last?.timestamp ?? 0)
         }
         
         return wordTimings
+    }
+    
+    /// Extract word timings for Chinese text (simplified segment-based approach)
+    func extractChineseWordTimings(segments: [SFTranscriptionSegment], expectedText: String) -> [WordTiming] {
+        let expectedCharacters = LanguageUtils.splitTextForLanguage(expectedText)
+        
+        print("🀄 Simplified approach: Processing \(segments.count) segments for \(expectedCharacters.count) expected characters")
+        
+        var wordTimings: [WordTiming] = []
+        var characterIndex = 0
+        
+        // Sort segments by timestamp to ensure proper order
+        let sortedSegments = segments.sorted { $0.timestamp < $1.timestamp }
+        
+        for segment in sortedSegments {
+            let segmentText = segment.substring.filter { !$0.isWhitespace }
+            let segmentLength = segmentText.count
+            
+            guard segmentLength > 0 else { 
+                print("⚠️ Empty segment, skipping")
+                continue 
+            }
+            
+            print("📊 Segment '\(segmentText)' (\(segmentLength) chars) at \(String(format: "%.2f", segment.timestamp))s")
+            
+            // Calculate how many characters this segment should highlight
+            let charactersToHighlight = min(segmentLength, expectedCharacters.count - characterIndex)
+            
+            // Calculate time interval between characters in this segment
+            let timePerCharacter = segment.duration / Double(max(charactersToHighlight, 1))
+            
+            // Create timing for each character that should be highlighted by this segment
+            for i in 0..<charactersToHighlight {
+                let currentCharacterIndex = characterIndex + i
+                if currentCharacterIndex < expectedCharacters.count {
+                    let expectedChar = expectedCharacters[currentCharacterIndex]
+                    
+                    // Give each character a slightly different timestamp within the segment
+                    let characterTimestamp = segment.timestamp + (timePerCharacter * Double(i))
+                    
+                    let wordTiming = WordTiming(
+                        word: expectedChar,
+                        startTime: characterTimestamp,
+                        duration: timePerCharacter, // Use calculated duration
+                        confidence: segment.confidence
+                    )
+                    
+                    wordTimings.append(wordTiming)
+                    print("📍 Char '\(expectedChar)' -> \(String(format: "%.2f", characterTimestamp))s (progressive within segment)")
+                }
+            }
+            
+            characterIndex += charactersToHighlight
+            
+            // If we've processed all expected characters, break
+            if characterIndex >= expectedCharacters.count {
+                break
+            }
+        }
+        
+        // If there are remaining characters, add them with progressive timestamps
+        if characterIndex < expectedCharacters.count {
+            let lastSegment = sortedSegments.last
+            let lastTimestamp = lastSegment?.timestamp ?? 0
+            let lastDuration = lastSegment?.duration ?? 0.5
+            let remainingCount = expectedCharacters.count - characterIndex
+            let timePerRemainingChar = lastDuration / Double(max(remainingCount, 1))
+            
+            print("⚠️ Adding remaining \(remainingCount) characters with progressive timestamps")
+            
+            for i in characterIndex..<expectedCharacters.count {
+                let expectedChar = expectedCharacters[i]
+                let charIndex = i - characterIndex
+                let characterTimestamp = lastTimestamp + lastDuration + (timePerRemainingChar * Double(charIndex))
+                
+                let wordTiming = WordTiming(
+                    word: expectedChar,
+                    startTime: characterTimestamp,
+                    duration: timePerRemainingChar,
+                    confidence: 0.5
+                )
+                wordTimings.append(wordTiming)
+                print("📍 Remaining char '\(expectedChar)' -> \(String(format: "%.2f", characterTimestamp))s")
+            }
+        }
+        
+        print("✅ Created \(wordTimings.count) character timings using simplified segment-based approach")
+        return wordTimings
+    }
+    
+    /// Fill missing Chinese character timings with reasonable estimates
+    private func fillMissingChineseCharacters(wordTimings: [WordTiming], expectedCharacters: [String], totalDuration: TimeInterval) -> [WordTiming] {
+        var completeTimings: [WordTiming] = []
+        
+        if !wordTimings.isEmpty {
+            // Use existing timings as anchors and fill gaps
+            var currentTimingIndex = 0
+            
+            for (_, expectedChar) in expectedCharacters.enumerated() {
+                if currentTimingIndex < wordTimings.count && 
+                   wordTimings[currentTimingIndex].word == expectedChar {
+                    // Use actual timing
+                    completeTimings.append(wordTimings[currentTimingIndex])
+                    currentTimingIndex += 1
+                } else {
+                    // Estimate timing based on previous character
+                    let estimatedStartTime: TimeInterval
+                    let estimatedDuration: TimeInterval = 0.3 // Shorter for Chinese characters
+                    
+                    if completeTimings.isEmpty {
+                        estimatedStartTime = 0
+                    } else {
+                        let lastTiming = completeTimings.last!
+                        estimatedStartTime = lastTiming.endTime
+                    }
+                    
+                    let estimatedTiming = WordTiming(
+                        word: expectedChar,
+                        startTime: estimatedStartTime,
+                        duration: estimatedDuration,
+                        confidence: 0.5 // Lower confidence for estimated
+                    )
+                    
+                    completeTimings.append(estimatedTiming)
+                    print("📊 Estimated timing for '\(expectedChar)' at \(String(format: "%.2f", estimatedStartTime))s")
+                }
+            }
+        } else {
+            // No timings found, use simple even distribution
+            print("⚠️ No character timings found, using even distribution fallback")
+            let timePerChar = totalDuration > 0 ? totalDuration / Double(expectedCharacters.count) : 0.3
+            
+            for (index, expectedChar) in expectedCharacters.enumerated() {
+                let timing = WordTiming(
+                    word: expectedChar,
+                    startTime: Double(index) * timePerChar,
+                    duration: timePerChar,
+                    confidence: 0.3 // Low confidence for fallback
+                )
+                completeTimings.append(timing)
+            }
+        }
+        
+        return completeTimings
     }
     
     /// Fill missing word timings with reasonable estimates
