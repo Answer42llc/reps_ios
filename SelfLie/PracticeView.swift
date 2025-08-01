@@ -73,11 +73,9 @@ struct PracticeView: View {
             }
 
             VStack(spacing: 0) {
-                
-                Spacer()
-                
-                // Main card container
+                // Main card container with fixed top positioning
                 cardView
+                    .padding(.top, 60) // Fixed top padding
                 
                 Spacer()
                 
@@ -138,8 +136,7 @@ struct PracticeView: View {
         }
         .background(Color.white)
         .cornerRadius(20)
-        .padding(. horizontal)
-        .padding(.vertical, 48)
+        .padding(.horizontal)
     }
     
     private var cardContent: some View {
@@ -171,7 +168,6 @@ struct PracticeView: View {
                 .padding(.vertical, 12)
                 .background(Color.purple)
                 .cornerRadius(20)
-                .disabled(true)
             } else if !silentRecordingDetected && similarity >= 0.8 {
                 // Success state shows checkmark
                 HStack(spacing: 8) {
@@ -196,6 +192,9 @@ struct PracticeView: View {
                 .foregroundStyle(.secondary)
                 .fontWeight(.semibold)
                 .fontDesign(.default)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+
             }
             // For failure states, no status indicator is shown (matches design)
         }
