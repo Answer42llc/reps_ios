@@ -742,6 +742,17 @@ struct PracticeView: View {
                 print("⚠️ [PracticeView] Failed to clean up temp file: \(error.localizedDescription)")
             }
         }
+        
+        // Deactivate audio session and notify other apps to resume (Apple Music, etc.)
+        print("🎵 [PracticeView] Deactivating audio session to restore other apps' audio")
+        Task {
+            do {
+                try await AudioSessionManager.shared.deactivateSession()
+                print("✅ [PracticeView] Audio session deactivated, other apps can resume playback")
+            } catch {
+                print("⚠️ [PracticeView] Failed to deactivate audio session: \(error.localizedDescription)")
+            }
+        }
     }
     
     private func monitorSilenceForSmartStop() {

@@ -246,10 +246,17 @@ class AudioService: NSObject {
             // Notify completion
             onPlaybackComplete?()
             
+            // Keep audio session active for subsequent recording operations
+            print("⏰ [AudioService] 🎵 Playback completed, keeping audio session active for recording")
+            
         } catch {
             print("⏰ [AudioService] ❌ playAudio() failed with error: \(error.localizedDescription)")
             isPlaying = false
             stopPlaybackProgressTracking()
+            
+            // Keep audio session active even on failure, will be deactivated when PracticeView closes
+            print("⏰ [AudioService] ⚠️ Playback failed, keeping audio session active for cleanup by caller")
+            
             throw AudioServiceError.playbackFailed
         }
         
@@ -380,11 +387,11 @@ class AudioSessionManager {
     
     func getAudioSessionOptions(hasBluetoothDevice: Bool) -> AVAudioSession.CategoryOptions {
         if hasBluetoothDevice {
-            // For AirPods and Bluetooth devices: allow Bluetooth A2DP and mix with others
-            return [.allowBluetoothA2DP, .mixWithOthers]
+            // For AirPods and Bluetooth devices: allow Bluetooth A2DP, interrupt other audio apps
+            return [.allowBluetoothA2DP]
         } else {
-            // For phone speaker: default to speaker with mix capability
-            return [.defaultToSpeaker, .mixWithOthers]
+            // For phone speaker: default to speaker, interrupt other audio apps
+            return [.defaultToSpeaker]
         }
     }
     
@@ -429,18 +436,55 @@ class AudioSessionManager {
         if hasBluetoothDevice {
             print("🎧 [AudioSessionManager] Forcing audio routing to Bluetooth device")
             
-            // Override the output port to preferred Bluetooth device
-            do {
-                try audioSession.overrideOutputAudioPort(.none) // Clear any speaker override
-                print("🎧 [AudioSessionManager] ✅ Cleared speaker override, should route to Bluetooth")
-            } catch {
-                print("🎧 [AudioSessionManager] ⚠️ Failed to clear speaker override: \(error.localizedDescription)")
+            // iOS 17+ AirPods Pro 2 routing fix: Multiple attempts with verification
+            var routingSuccess = false
+            let maxRetries = 3
+            
+            for attempt in 1...maxRetries {
+                print("🎧 [AudioSessionManager] Routing attempt \(attempt)/\(maxRetries)")
+                
+                // Override the output port to preferred Bluetooth device
+                do {
+                    try audioSession.overrideOutputAudioPort(.none) // Clear any speaker override
+                    print("🎧 [AudioSessionManager] ✅ Cleared speaker override (attempt \(attempt))")
+                    
+                    // Short delay to allow routing to settle
+                    try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+                    
+                    // Verify the routing worked
+                    let route = audioSession.currentRoute
+                    let hasBluetoothOutput = route.outputs.contains { $0.portType == .bluetoothA2DP }
+                    let currentOutputs = route.outputs.map { "\($0.portName) (\($0.portType.rawValue))" }
+                    
+                    print("🎧 [AudioSessionManager] Post-routing check (attempt \(attempt)) - Current outputs: \(currentOutputs)")
+                    print("🎧 [AudioSessionManager] Bluetooth output active: \(hasBluetoothOutput)")
+                    
+                    if hasBluetoothOutput {
+                        routingSuccess = true
+                        print("🎧 [AudioSessionManager] ✅ Bluetooth routing successful on attempt \(attempt)")
+                        break
+                    } else if attempt < maxRetries {
+                        print("🎧 [AudioSessionManager] ⚠️ Bluetooth routing failed on attempt \(attempt), retrying...")
+                        // Force session reconfiguration for iOS 17+ AirPods Pro 2 fix
+                        try audioSession.setActive(false)
+                        try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
+                        try audioSession.setActive(true)
+                    }
+                    
+                } catch {
+                    print("🎧 [AudioSessionManager] ⚠️ Failed to clear speaker override (attempt \(attempt)): \(error.localizedDescription)")
+                    if attempt == maxRetries {
+                        throw error
+                    }
+                }
             }
             
-            // Additional check: verify the routing worked
-            let route = audioSession.currentRoute
-            let hasBluetoothOutput = route.outputs.contains { $0.portType == .bluetoothA2DP }
-            print("🎧 [AudioSessionManager] Post-routing check - Bluetooth output active: \(hasBluetoothOutput)")
+            if !routingSuccess {
+                print("🎧 [AudioSessionManager] ⚠️ Failed to route to Bluetooth after \(maxRetries) attempts - iOS 17+ AirPods Pro 2 issue detected")
+                // Log device info for debugging
+                let route = audioSession.currentRoute
+                print("🎧 [AudioSessionManager] Final route - Inputs: \(route.inputs.map { $0.portName }), Outputs: \(route.outputs.map { $0.portName })")
+            }
             
         } else {
             print("📱 [AudioSessionManager] Forcing audio routing to speaker")
@@ -513,5 +557,11 @@ class AudioSessionManager {
         try await setupForPlayAndRecord()
         
         print("⏰ [AudioSessionManager] ✅ Audio session reset completed")
+    }
+    
+    func deactivateSession() async throws {
+        print("⏰ [AudioSessionManager] 🔄 Deactivating audio session and notifying other apps")
+        try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+        print("⏰ [AudioSessionManager] ✅ Audio session deactivated successfully")
     }
 }
