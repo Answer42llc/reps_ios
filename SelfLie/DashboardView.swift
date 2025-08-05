@@ -48,7 +48,6 @@ struct DashboardView: View {
             
             Spacer()
         }
-        .fontDesign(.serif)
         .background(Color(hex: "#f9f9f9"))
         .navigationTitle("My Reps")
         .ignoresSafeArea(.all, edges: .bottom)
@@ -78,12 +77,10 @@ struct DashboardView: View {
             
             Text("No affirmations yet")
                 .font(.title2)
-                .fontDesign(.serif)
                 .foregroundColor(.secondary)
             
             Text("Tap 'Add' to create your first affirmation")
                 .font(.body)
-                .fontDesign(.serif)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }

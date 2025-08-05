@@ -75,14 +75,15 @@ struct PracticeView: View {
             VStack(spacing: 0) {
                 // Main card container with fixed top positioning
                 cardView
-                    .padding(.top, 60) // Fixed top padding
-                
+                    .padding(.top, 88) // Fixed top padding
+
                 Spacer()
                 
                 // External action area (outside card)
                 externalActionArea
                     .padding(.bottom, 40)
             }
+
         }
         .onAppear {
             appearTime = Date()
@@ -153,6 +154,8 @@ struct PracticeView: View {
             }
         }
         .padding(24)
+        .frame(maxWidth: .infinity)
+
     }
     
     private var statusArea: some View {
@@ -160,7 +163,7 @@ struct PracticeView: View {
             if practiceState != .completed {
                 // Show status during active states
                 Text(currentStatusText)
-                .fontDesign(.monospaced)
+                .fontDesign(.default)
                 .font(.headline)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
@@ -172,9 +175,8 @@ struct PracticeView: View {
                 // Success state shows checkmark
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark")
-                        .foregroundColor(.white)
-                    Text("Great!")
                         .fontWeight(.semibold)
+                        .foregroundColor(.white)
                 }
                 .font(.headline)
                 .fontDesign(.default)
@@ -198,17 +200,17 @@ struct PracticeView: View {
             }
             // For failure states, no status indicator is shown (matches design)
         }
+        .fontDesign(.default)
     }
     
     private var contentArea: some View {
         VStack(spacing: 16) {
             // Main affirmation text
             affirmationTextView
-            // Replay button (shown after recording ends)
-            if practiceState == .completed {
-                replayButton
-            }
-
+            // Replay button (shown after recording ends) with modified visibility
+            replayButton
+                .opacity(practiceState == .completed ? 1 : 0)
+                .allowsHitTesting(practiceState == .completed)
             // Hint text
             hintText
             
@@ -216,42 +218,51 @@ struct PracticeView: View {
     }
     
     private var cardActionArea: some View {
-        Button("Restart") {
+        Button(action: {
             Task {
                 await restartPractice()
             }
-        }
-        .font(.headline)
-        .fontWeight(.semibold)
-        .foregroundColor(.white)
+        }, label: {
+            Image(systemName: "gobackward")
+            Text("Restart")
+                .fontDesign(.default)
+        })
         .padding()
-        .frame(maxWidth: .infinity)
-        .background(Color.purple)
-        .cornerRadius(25)
+        .background(Color(.secondarySystemBackground))
+        .foregroundStyle(.purple)
+        .clipShape(Capsule())
+
     }
     
     private var externalActionArea: some View {
         VStack {
             if practiceState != .completed {
-                Button("Can't speak now") {
+                Button(action: {
                     cleanup()
                     dismiss()
+                }) {
+                    Text("Can't speak now")
+                        .fontDesign(.default)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.gray)
                 }
-                .font(.headline)
-                .foregroundColor(.gray)
             } else if !silentRecordingDetected && similarity >= 0.8 {
-                Button("Done") {
+                Button(action: {
                     cleanup()
                     dismiss()
+
+                }) {
+                    Text("Done")
+                        .fontDesign(.default)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding()
+                        .frame(maxWidth: .infinity, maxHeight: 50)
+                        .background(Color.purple)
+                        .cornerRadius(25)
+                        .padding(.horizontal, 20)
+
                 }
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: 50)
-                .background(Color.purple)
-                .cornerRadius(25)
-                .padding(.horizontal, 20)
             }
         }
     }
@@ -270,8 +281,9 @@ struct PracticeView: View {
     }
     
     private var hintText: some View {
-        Text("Your brain believes your own words most.")
-            .font(.body)
+        Text(practiceState == .playing ? "Your brain believes your own words most." : "Even a lie repeated a thousand times becomes the truth")
+            .fontDesign(.default)
+            .font(.footnote)
             .foregroundColor(.gray)
             .multilineTextAlignment(.center)
     }
@@ -282,13 +294,9 @@ struct PracticeView: View {
                 await replayOriginalAudio()
             }
         }) {
-            HStack(spacing: 4) {
-                Image(systemName: "play.fill")
-                    .font(.caption)
-                Text("Replay")
-                    .font(.headline)
-            }
-            .foregroundColor(.purple)
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.title2)
+                .foregroundColor(.purple)
         }
     }
     
@@ -954,3 +962,5 @@ enum PracticeState {
     return PracticeView(affirmation: sampleAffirmation)
         .environment(\.managedObjectContext, context)
 }
+
+
