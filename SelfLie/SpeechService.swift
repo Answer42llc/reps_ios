@@ -29,10 +29,10 @@ class SpeechService: NSObject {
     var onAudioLevelUpdate: ((Float) -> Void)?
     var onSilenceDetected: ((Bool) -> Void)?
     
-    // Word-level recognition callbacks
+    // Universal text unit recognition callbacks
     var onWordRecognized: ((String, Set<Int>) -> Void)?
     var recognizedWords: Set<Int> = []
-    private var expectedWords: [String] = []
+    private var expectedTextUnits: [UniversalTextProcessor.TextUnit] = []
     
     // Silence detection
     private var silenceThreshold: Float = -40.0 // dB
@@ -69,11 +69,12 @@ class SpeechService: NSObject {
             Thread.sleep(forTimeInterval: 0.1)
         }
         
-        // Prepare expected words for tracking
-        expectedWords = expectedText.components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .map { $0.lowercased() }
+        // Prepare expected text units for tracking using universal processor
+        expectedTextUnits = UniversalTextProcessor.smartSegmentText(expectedText)
         recognizedWords.removeAll()
+        
+        print("🌍 [SpeechService] Using universal text processing for '\(expectedText)'")
+        print("📊 [SpeechService] Expected units: \(UniversalTextProcessor.extractTexts(from: expectedTextUnits))")
         
         // Set up recognizer for the expected text language
         setupRecognizerForText(expectedText)
@@ -201,32 +202,29 @@ class SpeechService: NSObject {
     }
     
     private func processWordRecognition(result: SFSpeechRecognitionResult) {
-        guard !expectedWords.isEmpty else { return }
+        guard !expectedTextUnits.isEmpty else { return }
         
-        let recognizedText = result.bestTranscription.formattedString.lowercased()
-        let recognizedWordsArray = recognizedText.components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
+        let recognizedText = result.bestTranscription.formattedString
+        print("🎤 [SpeechService] Processing recognition: '\(recognizedText)'")
         
-        var newlyRecognizedIndices: Set<Int> = []
+        // Use universal text processor to segment recognized text
+        let recognizedTextUnits = UniversalTextProcessor.smartSegmentText(recognizedText)
+        print("🔍 [SpeechService] Recognized units: \(UniversalTextProcessor.extractTexts(from: recognizedTextUnits))")
         
-        // Check each expected word against recognized words
-        for (expectedIndex, expectedWord) in expectedWords.enumerated() {
-            if !recognizedWords.contains(expectedIndex) { // Only check words not already recognized
-                for recognizedWord in recognizedWordsArray {
-                    if recognizedWord.contains(expectedWord) || expectedWord.contains(recognizedWord) {
-                        // Consider it a match if there's partial similarity
-                        let similarity = calculateWordSimilarity(expectedWord, recognizedWord)
-                        if similarity > 0.7 { // Threshold for word match
-                            recognizedWords.insert(expectedIndex)
-                            newlyRecognizedIndices.insert(expectedIndex)
-                            break
-                        }
-                    }
-                }
-            }
-        }
+        // Find matching units using universal processor's intelligent matching
+        let matchedIndices = UniversalTextProcessor.findMatchingUnits(
+            expectedUnits: expectedTextUnits,
+            recognizedUnits: recognizedTextUnits,
+            similarityThreshold: 0.7
+        )
         
-        // Notify about newly recognized words
+        // Update recognized words with newly matched indices
+        let newlyRecognizedIndices = matchedIndices.subtracting(recognizedWords)
+        recognizedWords.formUnion(matchedIndices)
+        
+        print("🎯 [SpeechService] Matched units: \(matchedIndices), Total recognized: \(recognizedWords.count)/\(expectedTextUnits.count)")
+        
+        // Notify about recognition updates
         if !newlyRecognizedIndices.isEmpty || !recognizedWords.isEmpty {
             onWordRecognized?(recognizedText, recognizedWords)
         }
@@ -686,12 +684,12 @@ extension SpeechService {
     private func extractWordTimings(from result: SFSpeechRecognitionResult, expectedText: String) -> [WordTiming] {
         let segments = result.bestTranscription.segments
         
-        // Issue 3 Fix: Handle Chinese and English text differently
-        if LanguageUtils.isChineseText(expectedText) {
-            print("🀄 Processing Chinese text with character-level timing")
+        // Use UniversalTextProcessor to determine the best processing approach
+        if UniversalTextProcessor.containsCJKCharacters(expectedText) {
+            print("🀄 Processing CJK text with character-level timing")
             return extractChineseWordTimings(segments: segments, expectedText: expectedText)
         } else {
-            print("🔤 Processing English text with word-level timing")
+            print("🔤 Processing alphabetic text with word-level timing")
             return extractEnglishWordTimings(segments: segments, expectedText: expectedText)
         }
     }
@@ -755,7 +753,8 @@ extension SpeechService {
     
     /// Extract word timings for Chinese text (simplified segment-based approach)
     func extractChineseWordTimings(segments: [SFTranscriptionSegment], expectedText: String) -> [WordTiming] {
-        let expectedCharacters = LanguageUtils.splitTextForLanguage(expectedText)
+        let expectedTextUnits = UniversalTextProcessor.smartSegmentText(expectedText)
+        let expectedCharacters = UniversalTextProcessor.extractTexts(from: expectedTextUnits)
         
         print("🀄 Simplified approach: Processing \(segments.count) segments for \(expectedCharacters.count) expected characters")
         

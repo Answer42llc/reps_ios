@@ -119,7 +119,7 @@ struct PracticeView: View {
     
     
     private var affirmationTextView: some View {
-        WordHighlighter(
+        NativeTextHighlighter(
             text: affirmation.text,
             highlightedWordIndices: highlightedWordIndices,
             currentWordIndex: currentWordIndex
@@ -778,7 +778,7 @@ struct PracticeView: View {
                 self.initializeWordTimings()
                 
                 // Update current word index based on playback progress
-                let newWordIndex = WordHighlighter.getWordIndexForTime(currentTime, wordTimings: self.wordTimings)
+                let newWordIndex = NativeTextHighlighter.getWordIndexForTime(currentTime, wordTimings: self.wordTimings)
                 
                 if newWordIndex != self.currentWordIndex {
                     print("🎯 [PracticeView] Updating word index from \(self.currentWordIndex) to \(newWordIndex) at time \(String(format: "%.2f", currentTime))s")
@@ -872,13 +872,14 @@ struct PracticeView: View {
     }
     
     private func shouldRegenerateTimings() -> Bool {
-        // Check if it's Chinese text with only 1 timing (indicates old English-style processing)
-        let isChinese = LanguageUtils.isChineseText(affirmation.text)
+        // Check if it's CJK text with only 1 timing (indicates old word-style processing)
+        let isCJK = UniversalTextProcessor.containsCJKCharacters(affirmation.text)
         let hasOnlyOneWord = wordTimings.count == 1
-        let expectedCharCount = LanguageUtils.splitTextForLanguage(affirmation.text).count
+        let textUnits = UniversalTextProcessor.smartSegmentText(affirmation.text)
+        let expectedUnitCount = textUnits.count
         
-        if isChinese && hasOnlyOneWord && expectedCharCount > 1 {
-            print("🀄 [PracticeView] Chinese text '\(affirmation.text)' has only 1 timing but should have \(expectedCharCount) characters")
+        if isCJK && hasOnlyOneWord && expectedUnitCount > 1 {
+            print("🀄 [PracticeView] CJK text '\(affirmation.text)' has only 1 timing but should have \(expectedUnitCount) units")
             return true
         }
         
@@ -924,8 +925,9 @@ struct PracticeView: View {
     }
     
     private func createFallbackTimings() {
-        // Create simple fallback timings based on text length
-        let words = LanguageUtils.splitTextForLanguage(affirmation.text)
+        // Create simple fallback timings based on text length using universal processor
+        let textUnits = UniversalTextProcessor.smartSegmentText(affirmation.text)
+        let words = UniversalTextProcessor.extractTexts(from: textUnits)
         let timePerWord: TimeInterval = audioDuration > 0 ? audioDuration / Double(words.count) : 0.5
         
         wordTimings = words.enumerated().map { index, word in
@@ -937,7 +939,7 @@ struct PracticeView: View {
             )
         }
         
-        print("📊 [PracticeView] Created \(wordTimings.count) fallback timings")
+        print("📊 [PracticeView] Created \(wordTimings.count) fallback timings using universal processor")
     }
 }
 

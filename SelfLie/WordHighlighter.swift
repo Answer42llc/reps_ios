@@ -8,8 +8,9 @@ struct WordHighlighter: View {
     @State private var words: [String] = []
     
     var body: some View {
-        // Issue 3 Fix: Use LanguageUtils for proper text splitting (words for English, characters for Chinese)
-        let wordArray = LanguageUtils.splitTextForLanguage(text)
+        // Use UniversalTextProcessor for automatic multi-language text segmentation
+        let textUnits = UniversalTextProcessor.smartSegmentText(text)
+        let wordArray = UniversalTextProcessor.extractTexts(from: textUnits)
         
         return VStack(alignment: .leading, spacing: 0) {
             wrappedText(words: wordArray)
@@ -23,8 +24,8 @@ struct WordHighlighter: View {
         
         return VStack(alignment: .center, spacing: 8) {
             ForEach(Array(lines.enumerated()), id: \.offset) { lineIndex, lineWords in
-                // Issue 3 Fix: Use different spacing for Chinese vs English
-                let spacing: CGFloat = LanguageUtils.isChineseText(text) ? 0 : 4
+                // Use different spacing for CJK vs alphabetic text
+                let spacing: CGFloat = UniversalTextProcessor.containsCJKCharacters(text) ? 0 : 4
                 HStack(spacing: spacing) {
                     ForEach(Array(lineWords.enumerated()), id: \.offset) { wordIndexInLine, word in
                         let globalWordIndex = calculateGlobalIndex(lineIndex: lineIndex, wordIndexInLine: wordIndexInLine, lines: lines)
@@ -41,22 +42,22 @@ struct WordHighlighter: View {
     }
     
     private func createLines(from words: [String]) -> [[String]] {
-        // Issue 3 Fix: Handle Chinese and English text differently for line wrapping
-        if LanguageUtils.isChineseText(text) {
-            return createChineseLines(from: words)
+        // Use UniversalTextProcessor for automatic multi-language line wrapping
+        if UniversalTextProcessor.containsCJKCharacters(text) {
+            return createCJKLines(from: words)
         } else {
-            return createEnglishLines(from: words)
+            return createAlphabeticLines(from: words)
         }
     }
     
-    /// Create lines for Chinese text (character-based, simpler wrapping)
-    func createChineseLines(from words: [String]) -> [[String]] {
+    /// Create lines for CJK text (character-based, simpler wrapping)
+    func createCJKLines(from words: [String]) -> [[String]] {
         var lines: [[String]] = []
         var currentLine: [String] = []
-        let maxCharsPerLine = LanguageUtils.getRecommendedCharsPerLine(for: text)
+        let maxUnitsPerLine = UniversalTextProcessor.getRecommendedUnitsPerLine(for: text)
         
         for word in words {
-            if currentLine.count >= maxCharsPerLine {
+            if currentLine.count >= maxUnitsPerLine {
                 lines.append(currentLine)
                 currentLine = [word]
             } else {
@@ -71,8 +72,8 @@ struct WordHighlighter: View {
         return lines
     }
     
-    /// Create lines for English text (original logic with word-based measurement)
-    private func createEnglishLines(from words: [String]) -> [[String]] {
+    /// Create lines for alphabetic text (word-based measurement for Latin, Cyrillic, etc.)
+    private func createAlphabeticLines(from words: [String]) -> [[String]] {
         var lineWords: [String] = []
         var lines: [[String]] = []
         let maxLineWidth: CGFloat = 280 // Approximate max width for mobile
