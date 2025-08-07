@@ -15,6 +15,9 @@ class AudioService: NSObject {
     private var recordingTimer: Timer?
     private var playbackProgressTimer: Timer?
     
+    // 播放完成检测优化：使用Continuation替代轮询
+    private var playbackCompletionContinuation: CheckedContinuation<Void, Error>?
+    
     // Playback progress callbacks
     var onPlaybackProgress: ((TimeInterval, TimeInterval) -> Void)?
     var onPlaybackComplete: (() -> Void)?
@@ -29,6 +32,10 @@ class AudioService: NSObject {
         preWarmedTimer?.invalidate()
         playbackProgressTimer?.invalidate()
         cleanupPreparedRecording()
+        
+        // 清理播放完成continuation
+        playbackCompletionContinuation?.resume(throwing: CancellationError())
+        playbackCompletionContinuation = nil
     }
     
     func requestMicrophonePermission() async -> Bool {
@@ -225,20 +232,32 @@ class AudioService: NSObject {
             let playCallDuration = Date().timeIntervalSince(playStartTime) * 1000
             print("⏰ [AudioService] ✅ audioPlayer.play() call completed in \(String(format: "%.0fms", playCallDuration))")
             
-            // Wait for playback to complete
-            print("⏰ [AudioService] ⏳ Entering while loop to wait for playback completion")
+            // 优化：使用Continuation等待播放完成，替代轮询
+            print("⏰ [AudioService] ⏳ Waiting for playback completion via delegate callback")
             let waitStartTime = Date()
-            var loopCount = 0
-            while audioPlayer?.isPlaying == true {
-                try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-                loopCount += 1
-                if loopCount % 10 == 0 { // Log every 1 second
-                    let waitDuration = Date().timeIntervalSince(waitStartTime) * 1000
-                    print("⏰ [AudioService] 🔄 Still playing after \(String(format: "%.0fms", waitDuration)) (loop: \(loopCount))")
+            
+            // 使用continuation等待AVAudioPlayerDelegate回调
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                // 确保没有之前的continuation残留
+                if let oldContinuation = playbackCompletionContinuation {
+                    oldContinuation.resume(throwing: CancellationError())
+                }
+                playbackCompletionContinuation = continuation
+                
+                // 立即检查是否已经播放完成（防止竞态条件）
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    if self.audioPlayer?.isPlaying == false {
+                        // 已经完成播放，立即触发
+                        if let cont = self.playbackCompletionContinuation {
+                            self.playbackCompletionContinuation = nil
+                            cont.resume()
+                        }
+                    }
                 }
             }
+            
             let totalWaitDuration = Date().timeIntervalSince(waitStartTime) * 1000
-            print("⏰ [AudioService] ✅ Playback completed, exited while loop after \(String(format: "%.0fms", totalWaitDuration)) (\(loopCount) loops)")
+            print("⏰ [AudioService] ✅ Playback completed via delegate callback after \(String(format: "%.0fms", totalWaitDuration))")
             
             // Stop progress tracking
             stopPlaybackProgressTracking()
@@ -254,6 +273,12 @@ class AudioService: NSObject {
             isPlaying = false
             stopPlaybackProgressTracking()
             
+            // 清理播放完成continuation
+            if let continuation = playbackCompletionContinuation {
+                playbackCompletionContinuation = nil
+                continuation.resume(throwing: error)
+            }
+            
             // Keep audio session active even on failure, will be deactivated when PracticeView closes
             print("⏰ [AudioService] ⚠️ Playback failed, keeping audio session active for cleanup by caller")
             
@@ -268,6 +293,12 @@ class AudioService: NSObject {
         audioPlayer = nil
         isPlaying = false
         stopPlaybackProgressTracking()
+        
+        // 清理播放完成continuation
+        if let continuation = playbackCompletionContinuation {
+            playbackCompletionContinuation = nil
+            continuation.resume(throwing: CancellationError())
+        }
     }
     
     private func startPlaybackProgressTracking() {
@@ -323,8 +354,19 @@ extension AudioService: AVAudioRecorderDelegate {
 
 extension AudioService: AVAudioPlayerDelegate {
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        print("⏰ [AudioService] 🎵 AVAudioPlayerDelegate: playback finished successfully=\(flag)")
         isPlaying = false
         audioPlayer = nil
+        
+        // 立即通过continuation触发播放完成
+        if let continuation = playbackCompletionContinuation {
+            playbackCompletionContinuation = nil
+            if flag {
+                continuation.resume()
+            } else {
+                continuation.resume(throwing: AudioServiceError.playbackFailed)
+            }
+        }
     }
 }
 
