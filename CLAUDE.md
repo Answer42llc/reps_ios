@@ -56,3 +56,6 @@ struct Affirmation {
 
 ## Build Notes
 - Reminder to modify code and attempt build for iPhone100
+
+## Development Workflow
+- Use 'Explore, plan, code, commit' workflow, you must ask permission before code and commit

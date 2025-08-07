@@ -35,6 +35,10 @@ struct PracticeView: View {
     // 优化：预准备状态切换数据
     @State private var isPreparingForRecording = false
     
+    // 防重复分析
+    @State private var capturedRecognitionText: String = ""
+    @State private var hasProcessedFinalAnalysis = false
+    
     private var practiceURL: URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return documentsPath.appendingPathComponent("\(UUID().uuidString).m4a")
@@ -103,6 +107,10 @@ struct PracticeView: View {
         .onChange(of: speechService.recognizedText) { _, newText in
             // Monitor for smart recording stop
             if practiceState == .recording && !newText.isEmpty {
+                // 捕获识别文本用于后续分析，避免在清理过程中丢失
+                capturedRecognitionText = newText
+                print("📝 [PracticeView] Captured recognition text: '\(newText)'")
+                
                 let currentSimilarity = speechService.calculateSimilarity(
                     expected: affirmation.text, 
                     recognized: newText
@@ -303,6 +311,12 @@ struct PracticeView: View {
     
     private func startPracticeFlow() async {
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Starting practice flow for affirmation: '\(affirmation.text)'")
+        
+        // 重置防重复分析的状态变量
+        capturedRecognitionText = ""
+        hasProcessedFinalAnalysis = false
+        hasGoodSimilarity = false
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Reset analysis state variables")
         
         #if targetEnvironment(simulator)
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Running in simulator mode - skipping actual audio/recording")
@@ -641,14 +655,33 @@ struct PracticeView: View {
     
     private func analyzeRecording() async {
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔍 Starting speech analysis stage")
+        
+        // 防重复分析：如果已经处理过最终分析，直接返回
+        if hasProcessedFinalAnalysis {
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ Final analysis already processed, skipping duplicate")
+            return
+        }
+        
         await MainActor.run {
             practiceState = .analyzing
         }
         
         let analysisStartTime = Date()
         
-        // Use the real-time recognized text
-        let recognizedText = speechService.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 立即保存识别文本，避免在清理过程中丢失
+        let recognizedText: String
+        if !capturedRecognitionText.isEmpty {
+            // 使用之前捕获的文本（来自实时识别）
+            recognizedText = capturedRecognitionText.trimmingCharacters(in: .whitespacesAndNewlines)
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📝 Using captured recognition text: '\(recognizedText)'")
+        } else {
+            // 备用：使用当前的speechService文本
+            recognizedText = speechService.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📝 Using current speechService text: '\(recognizedText)'")
+        }
+        
+        // 标记已开始最终分析
+        hasProcessedFinalAnalysis = true
         
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 Expected text: '\(affirmation.text)'")
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Recognized text: '\(recognizedText)'")
