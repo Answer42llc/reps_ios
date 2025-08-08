@@ -85,3 +85,8 @@ struct Affirmation {
 - When your plan is about to edit codes, you MUST show what currently needs to be fixed and what the new codes after fixed.
 - 完成修改后进入 plan mode
 - 尽量避免使用任何的time delay来解决问题，请使用更加可靠的解决方案，直击问题本身。
+- 你需要对你的每一个想法进行反思，是必要的吗？是解决根本问题的方案吗？是最简单的方案吗？
+- 不要炫技，注意问题边界，不要一次解决多个问题。
+
+## Design Philosophy
+- 更多使用系统的能力而非自己手动实现，更多让系统默认控制而非自己实现控制，因为iOS默认的情况一般是最符合用户直觉的。

@@ -673,6 +673,9 @@ struct PracticeView: View {
         let stopDuration = Date().timeIntervalSince(stopStartTime) * 1000
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Recording services stopped in \(String(format: "%.0fms", stopDuration))")
         
+        // Note: With direct highlighting, all recognized characters are already highlighted
+        // No need for additional final highlighting step
+        
         await analyzeRecording()
     }
     
@@ -913,19 +916,13 @@ struct PracticeView: View {
             }
         }
         
-        // Speech service word recognition callback - Progressive Chinese highlighting
+        // Speech service word recognition callback - Direct highlighting for reliability
         speechService.onWordRecognized = { recognizedText, recognizedWordIndices in
             
             DispatchQueue.main.async {
-                // Progressive highlighting: add one new character at a time for smoother experience
-                let sortedIndices = recognizedWordIndices.sorted()
-                for index in sortedIndices {
-                    if !self.highlightedWordIndices.contains(index) {
-                        self.highlightedWordIndices.insert(index)
-                        print("🎯 [PracticeView] Progressive highlight: added index \(index)")
-                        break // Only add one new character per update for smooth progression
-                    }
-                }
+                // Direct highlighting: highlight all recognized characters immediately
+                self.highlightedWordIndices.formUnion(recognizedWordIndices)
+                print("🎯 [PracticeView] Direct highlight: highlighted \(recognizedWordIndices.count) characters \(recognizedWordIndices)")
                 
                 // Set current word index to the highest recognized word
                 if let maxIndex = recognizedWordIndices.max() {
