@@ -327,6 +327,12 @@ struct PracticeView: View {
     private func startPracticeFlow() async {
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Starting practice flow for affirmation: '\(affirmation.text)'")
         
+        // Ensure service callbacks are set up before starting
+        await MainActor.run {
+            setupServiceCallbacks()
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Service callbacks set up for practice flow")
+        }
+        
         // 重置防重复分析的状态变量
         capturedRecognitionText = ""
         hasProcessedFinalAnalysis = false
@@ -773,9 +779,15 @@ struct PracticeView: View {
         await MainActor.run {
             similarity = 0.0
             silentRecordingDetected = false
-            // Reset text highlighting to original colors
-            resetTextHighlighting()
+            // Force clear text highlighting for restart
+            highlightedWordIndices.removeAll()
+            currentWordIndex = -1
             isReplaying = false
+            
+            // Reset speechService state to clear previous recognition results
+            speechService.recognizedText = ""
+            speechService.recognizedWords.removeAll()
+            print("🔄 [PracticeView] Reset speechService state for restart")
             
             // Reset duplicate analysis protection flags
             hasProcessedFinalAnalysis = false
@@ -860,59 +872,90 @@ struct PracticeView: View {
         // Audio service playback progress callback
         audioService.onPlaybackProgress = { currentTime, duration in
             
-            Task { @MainActor in
+            DispatchQueue.main.async {
                 self.audioDuration = duration
                 
+                // Apply time offset compensation for system delays
+                let timeOffset: TimeInterval = 0.05 // 50ms compensation
+                let adjustedTime = currentTime + timeOffset
+                
                 // 添加详细的播放时序匹配日志
-                print("🎵 [PracticeView] Audio playback progress: \(String(format: "%.3f", currentTime))s / \(String(format: "%.3f", duration))s")
+                print("🎵 [PracticeView] Audio playback progress: \(String(format: "%.3f", currentTime))s / \(String(format: "%.3f", duration))s (adjusted: \(String(format: "%.3f", adjustedTime))s)")
                 
                 // 显示当前时间点附近的词时序信息
                 if !self.wordTimings.isEmpty {
                     let relevantTimings = self.wordTimings.enumerated().filter { index, timing in
-                        abs(timing.startTime - currentTime) <= 0.5 || abs(timing.endTime - currentTime) <= 0.5
+                        abs(timing.startTime - adjustedTime) <= 0.5 || abs(timing.endTime - adjustedTime) <= 0.5
                     }
                     if !relevantTimings.isEmpty {
                         print("🎵   Nearby word timings:")
                         for (index, timing) in relevantTimings {
-                            let status = (currentTime >= timing.startTime && currentTime < timing.endTime) ? "CURRENT" : "nearby"
+                            let status = (adjustedTime >= timing.startTime && adjustedTime < timing.endTime) ? "CURRENT" : "nearby"
                             print("🎵     [\(index)] '\(timing.word)' \(String(format: "%.3f", timing.startTime))s-\(String(format: "%.3f", timing.endTime))s (\(status))")
                         }
                     }
                 }
                 
                 // Update current word index based on playback progress
-                let newWordIndex = NativeTextHighlighter.getWordIndexForTime(currentTime, wordTimings: self.wordTimings)
+                let newWordIndex = NativeTextHighlighter.getWordIndexForTime(adjustedTime, wordTimings: self.wordTimings)
                 
                 if newWordIndex != self.currentWordIndex {
-                    print("🎯 [PracticeView] Updating word index from \(self.currentWordIndex) to \(newWordIndex) at time \(String(format: "%.3f", currentTime))s")
+                    print("🎯 [PracticeView] Updating word index from \(self.currentWordIndex) to \(newWordIndex) at time \(String(format: "%.3f", adjustedTime))s")
                     if newWordIndex >= 0 && newWordIndex < self.wordTimings.count {
                         let currentTiming = self.wordTimings[newWordIndex]
                         print("🎯   Current word: '\(currentTiming.word)' (\(String(format: "%.3f", currentTiming.startTime))s-\(String(format: "%.3f", currentTiming.endTime))s)")
                     }
                     self.currentWordIndex = newWordIndex
                     
-                    // Update highlighted words to include all words up to current
-                    if newWordIndex >= 0 {
-                        self.highlightedWordIndices = Set(0...newWordIndex)
-                        print("🎯 [PracticeView] Highlighted words: \(self.highlightedWordIndices)")
-                    } else {
-                        self.highlightedWordIndices.removeAll()
-                        print("🎯 [PracticeView] No words highlighted (before first word)")
-                    }
+                    // Optimized highlighting: only highlight completed words
+                    self.updateHighlightingWithProgress(currentIndex: newWordIndex, currentTime: adjustedTime)
                 }
             }
         }
         
-        // Speech service word recognition callback
+        // Speech service word recognition callback - Progressive Chinese highlighting
         speechService.onWordRecognized = { recognizedText, recognizedWordIndices in
             
-            Task { @MainActor in
-                self.highlightedWordIndices = recognizedWordIndices
+            DispatchQueue.main.async {
+                // Progressive highlighting: add one new character at a time for smoother experience
+                let sortedIndices = recognizedWordIndices.sorted()
+                for index in sortedIndices {
+                    if !self.highlightedWordIndices.contains(index) {
+                        self.highlightedWordIndices.insert(index)
+                        print("🎯 [PracticeView] Progressive highlight: added index \(index)")
+                        break // Only add one new character per update for smooth progression
+                    }
+                }
+                
                 // Set current word index to the highest recognized word
                 if let maxIndex = recognizedWordIndices.max() {
                     self.currentWordIndex = maxIndex
                 }
             }
+        }
+        
+        // Audio service playback complete callback
+        audioService.onPlaybackComplete = {
+            DispatchQueue.main.async {
+                // Ensure all words are highlighted when playback completes
+                if !self.wordTimings.isEmpty {
+                    self.highlightedWordIndices = Set(0..<self.wordTimings.count)
+                    self.currentWordIndex = self.wordTimings.count - 1
+                    print("🎯 [PracticeView] Playback complete: highlighted all \(self.wordTimings.count) words")
+                }
+            }
+        }
+    }
+    
+    /// Simplified highlighting update - highlight all words up to current index
+    private func updateHighlightingWithProgress(currentIndex: Int, currentTime: TimeInterval) {
+        if currentIndex >= 0 {
+            // Highlight all words from 0 to currentIndex (inclusive)
+            self.highlightedWordIndices = Set(0...currentIndex)
+            print("🎯 [PracticeView] Simple highlighting: words 0 to \(currentIndex)")
+        } else {
+            self.highlightedWordIndices.removeAll()
+            print("🎯 [PracticeView] No words highlighted (before first word)")
         }
     }
     

@@ -34,6 +34,10 @@ class SpeechService: NSObject {
     var recognizedWords: Set<Int> = []
     private var expectedTextUnits: [UniversalTextProcessor.TextUnit] = []
     
+    // Accumulated recognition text for sequential matching
+    private var accumulatedRecognizedText: String = ""
+    private var expectedFullText: String = ""
+    
     // Silence detection
     private var silenceThreshold: Float = -40.0 // dB
     private var silenceStartTime: Date?
@@ -72,6 +76,10 @@ class SpeechService: NSObject {
         // Prepare expected text units for tracking using universal processor
         expectedTextUnits = UniversalTextProcessor.smartSegmentText(expectedText)
         recognizedWords.removeAll()
+        
+        // Initialize accumulated recognition tracking
+        accumulatedRecognizedText = ""
+        expectedFullText = expectedText
         
         print("🌍 [SpeechService] Using universal text processing for '\(expectedText)'")
         print("📊 [SpeechService] Expected units: \(UniversalTextProcessor.extractTexts(from: expectedTextUnits))")
@@ -219,27 +227,121 @@ class SpeechService: NSObject {
         let recognizedText = result.bestTranscription.formattedString
         print("🎤 [SpeechService] Processing recognition: '\(recognizedText)'")
         
-        // Use universal text processor to segment recognized text
-        let recognizedTextUnits = UniversalTextProcessor.smartSegmentText(recognizedText)
-        print("🔍 [SpeechService] Recognized units: \(UniversalTextProcessor.extractTexts(from: recognizedTextUnits))")
+        // Update accumulated recognized text
+        accumulatedRecognizedText = recognizedText
         
-        // Find matching units using universal processor's intelligent matching
-        let matchedIndices = UniversalTextProcessor.findMatchingUnits(
-            expectedUnits: expectedTextUnits,
-            recognizedUnits: recognizedTextUnits,
-            similarityThreshold: 0.7
+        // Calculate sequential highlight indices
+        let highlightIndices = calculateHighlightIndices(
+            expectedText: expectedFullText,
+            recognizedText: accumulatedRecognizedText
         )
         
-        // Update recognized words with newly matched indices
-        let newlyRecognizedIndices = matchedIndices.subtracting(recognizedWords)
-        recognizedWords.formUnion(matchedIndices)
+        print("🔍 [SpeechService] Accumulated text: '\(accumulatedRecognizedText)'")
+        print("🎯 [SpeechService] Sequential highlight indices: \(highlightIndices)")
         
-        print("🎯 [SpeechService] Matched units: \(matchedIndices), Total recognized: \(recognizedWords.count)/\(expectedTextUnits.count)")
+        // Notify about recognition updates with new sequential highlighting
+        onWordRecognized?(accumulatedRecognizedText, highlightIndices)
+    }
+    
+    /// Check if a character is a punctuation mark
+    private func isPunctuation(_ text: String) -> Bool {
+        // Chinese punctuation
+        let chinesePunctuation = "，。！？；：（）【】「」『』〔〕《》〈〉"
+        // Chinese quotes (using character literals to avoid syntax issues)
+        let leftChineseQuote = String("\u{201C}")  // "
+        let rightChineseQuote = String("\u{201D}") // "
+        let leftChineseSingleQuote = String("\u{2018}")  // '
+        let rightChineseSingleQuote = String("\u{2019}") // '
+        let chineseQuotes = leftChineseQuote + rightChineseQuote + leftChineseSingleQuote + rightChineseSingleQuote
+        // English punctuation  
+        let englishPunctuation = ",.!?;:\"'()[]{}"
+        // Common symbols
+        let commonSymbols = "-_/\\|@#$%^&*+=<>~`"
         
-        // Notify about recognition updates
-        if !newlyRecognizedIndices.isEmpty || !recognizedWords.isEmpty {
-            onWordRecognized?(recognizedText, recognizedWords)
+        let allPunctuation = chinesePunctuation + chineseQuotes + englishPunctuation + commonSymbols
+        
+        return text.count == 1 && allPunctuation.contains(text)
+    }
+    
+    /// Calculate highlight indices using fault-tolerant matching with punctuation skipping
+    private func calculateHighlightIndices(expectedText: String, recognizedText: String) -> Set<Int> {
+        let expectedUnits = UniversalTextProcessor.smartSegmentText(expectedText)
+        let recognizedUnits = UniversalTextProcessor.smartSegmentText(recognizedText)
+        
+        var matchedIndices: Set<Int> = []
+        var expectedIndex = 0
+        
+        print("🎯 [SpeechService] Starting fault-tolerant matching:")
+        print("🎯   Expected units: \(UniversalTextProcessor.extractTexts(from: expectedUnits))")
+        print("🎯   Recognized units: \(UniversalTextProcessor.extractTexts(from: recognizedUnits))")
+        
+        // Fault-tolerant matching with punctuation skipping
+        for (recognizedIdx, recognizedUnit) in recognizedUnits.enumerated() {
+            print("🔍 [SpeechService] Processing recognized[\(recognizedIdx)]: '\(recognizedUnit.text)'")
+            
+            // Skip any leading punctuation before trying to match
+            while expectedIndex < expectedUnits.count && isPunctuation(expectedUnits[expectedIndex].text) {
+                print("🔤 [SpeechService] Skipping punctuation at expected[\(expectedIndex)]: '\(expectedUnits[expectedIndex].text)'")
+                matchedIndices.insert(expectedIndex)
+                expectedIndex += 1
+            }
+            
+            // Look for a match within a reasonable range (allowing for small gaps)
+            var found = false
+            let maxSearchRange = min(3, expectedUnits.count - expectedIndex) // Search up to 3 positions ahead
+            
+            for offset in 0..<maxSearchRange {
+                let checkIndex = expectedIndex + offset
+                
+                // Don't go beyond bounds
+                guard checkIndex < expectedUnits.count else { break }
+                
+                let candidateUnit = expectedUnits[checkIndex]
+                
+                // Check if this position matches
+                if recognizedUnit.text == candidateUnit.text {
+                    print("🎯 [SpeechService] Found match at [\(checkIndex)] with offset \(offset): '\(recognizedUnit.text)' ✓")
+                    
+                    // Mark any skipped positions between expectedIndex and checkIndex
+                    for skipIndex in expectedIndex..<checkIndex {
+                        if isPunctuation(expectedUnits[skipIndex].text) {
+                            print("🔤 [SpeechService] Marking skipped punctuation at [\(skipIndex)]: '\(expectedUnits[skipIndex].text)'")
+                            matchedIndices.insert(skipIndex)
+                        } else {
+                            // If we're skipping non-punctuation, limit the range
+                            if offset > 1 {
+                                print("🔍 [SpeechService] Skipping non-punctuation at [\(skipIndex)]: '\(expectedUnits[skipIndex].text)' (offset too large)")
+                                break
+                            }
+                            print("🔤 [SpeechService] Allowing small skip of non-punctuation at [\(skipIndex)]: '\(expectedUnits[skipIndex].text)'")
+                            // Don't mark non-punctuation as matched if we're skipping it
+                        }
+                    }
+                    
+                    // Mark the actual match
+                    matchedIndices.insert(checkIndex)
+                    expectedIndex = checkIndex + 1
+                    found = true
+                    break
+                }
+            }
+            
+            if !found {
+                print("🔍 [SpeechService] No match found for '\(recognizedUnit.text)' within range, continuing with next recognized character")
+                // Don't stop - continue with the next recognized character
+                // This allows us to recover from recognition errors or missing characters
+            }
         }
+        
+        // Handle any remaining punctuation at the end
+        while expectedIndex < expectedUnits.count && isPunctuation(expectedUnits[expectedIndex].text) {
+            print("🔤 [SpeechService] Final punctuation at [\(expectedIndex)]: '\(expectedUnits[expectedIndex].text)'")
+            matchedIndices.insert(expectedIndex)
+            expectedIndex += 1
+        }
+        
+        print("🎯 [SpeechService] Final matched indices: \(matchedIndices.sorted())")
+        return matchedIndices
     }
     
     private func calculateWordSimilarity(_ word1: String, _ word2: String) -> Float {

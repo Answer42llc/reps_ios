@@ -24,8 +24,8 @@ struct NativeTextHighlighter: View {
         for (index, unit) in textUnits.enumerated() {
             var unitAttributedString = AttributedString(unit.originalText)
             
-            // Apply highlighting based on current state
-            if highlightedWordIndices.contains(index) || index <= currentWordIndex {
+            // Apply highlighting based on highlightedWordIndices only (unified logic)
+            if highlightedWordIndices.contains(index) {
                 unitAttributedString.foregroundColor = .purple
             } else {
                 unitAttributedString.foregroundColor = .primary
