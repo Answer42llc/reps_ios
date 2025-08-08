@@ -30,10 +30,10 @@
             filePath = "SelfLie/AudioService.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "490"
-            endingLineNumber = "490"
-            landmarkName = "ensureSessionActive()"
-            landmarkType = "7">
+            startingLineNumber = "489"
+            endingLineNumber = "489"
+            landmarkName = "AudioServiceError"
+            landmarkType = "13">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -46,9 +46,9 @@
             filePath = "SelfLie/AudioService.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "483"
-            endingLineNumber = "483"
-            landmarkName = "ensureSessionActive()"
+            startingLineNumber = "482"
+            endingLineNumber = "482"
+            landmarkName = "audioPlayerDidFinishPlaying(_:successfully:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -62,9 +62,9 @@
             filePath = "SelfLie/AudioService.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "482"
-            endingLineNumber = "482"
-            landmarkName = "ensureSessionActive()"
+            startingLineNumber = "481"
+            endingLineNumber = "481"
+            landmarkName = "audioPlayerDidFinishPlaying(_:successfully:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

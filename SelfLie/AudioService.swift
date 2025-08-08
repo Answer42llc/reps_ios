@@ -1,6 +1,32 @@
 import AVFoundation
 import Foundation
 
+// MARK: - Debug Configuration
+private struct AudioDebugConfig {
+    static let isDebugModeEnabled = false  // Set to true only for debugging
+    static let enableDetailedTiming = false
+    static let enableHardwarePropertyLogging = false
+}
+
+// MARK: - Debug Logging Functions
+private func debugLog(_ message: String) {
+    if AudioDebugConfig.isDebugModeEnabled {
+        print(message)
+    }
+}
+
+private func timingLog(_ message: String) {
+    if AudioDebugConfig.enableDetailedTiming {
+        print(message)
+    }
+}
+
+private func hardwareLog(_ message: String) {
+    if AudioDebugConfig.enableHardwarePropertyLogging {
+        print(message)
+    }
+}
+
 @Observable
 class AudioService: NSObject {
     private var audioRecorder: AVAudioRecorder?
@@ -10,10 +36,9 @@ class AudioService: NSObject {
     
     // Helper function to get hardware-compatible audio settings
     private func getAudioSettings() -> [String: Any] {
-        let audioSession = AVAudioSession.sharedInstance()
-        let hardwareSampleRate = audioSession.sampleRate
+        let hardwareSampleRate = AudioSessionManager.shared.getCurrentSampleRate()
         
-        print("🎙️ [AudioService] Using hardware sample rate: \(hardwareSampleRate) Hz")
+        hardwareLog("🎙️ [AudioService] Using hardware sample rate: \(hardwareSampleRate) Hz")
         
         return [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
@@ -40,6 +65,30 @@ class AudioService: NSObject {
     override init() {
         super.init()
         // Audio session is now managed by AudioSessionManager
+        setupPlaybackInterruptionHandler()
+    }
+    
+    private func setupPlaybackInterruptionHandler() {
+        AudioSessionManager.shared.playbackInterruptionHandler = { [weak self] reason in
+            guard let self = self else { return }
+            
+            switch reason {
+            case .oldDeviceUnavailable:
+                // Switch audio route when device is disconnected - continue playback on speaker
+                if self.isPlaying {
+                    print("🎧 [AudioService] Audio device disconnected - switching to speaker")
+                    self.restartPlaybackForDeviceChange()
+                }
+            default:
+                break
+            }
+        }
+        
+        // 注册播放重启回调 - 当新设备连接时重新启动播放
+        AudioSessionManager.shared.playbackRestartHandler = { [weak self] in
+            guard let self = self else { return }
+            self.restartPlaybackForDeviceChange()
+        }
     }
     
     deinit {
@@ -64,7 +113,7 @@ class AudioService: NSObject {
     func prepareRecording(to url: URL) async throws {
         guard preparedRecorder == nil else { return }
         
-        print("⏰ [AudioService] 🔧 prepareRecording() started")
+        timingLog("⏰ [AudioService] 🔧 prepareRecording() started")
         let prepareStartTime = Date()
         
         // Ensure directory exists
@@ -72,7 +121,7 @@ class AudioService: NSObject {
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
         let directoryDuration = Date().timeIntervalSince(directoryStartTime) * 1000
-        print("⏰ [AudioService] 📁 Directory creation in \(String(format: "%.0fms", directoryDuration))")
+        timingLog("⏰ [AudioService] 📁 Directory creation in \(String(format: "%.0fms", directoryDuration))")
         
         let settings = getAudioSettings()
         
@@ -82,13 +131,13 @@ class AudioService: NSObject {
             preparedRecorder = try AVAudioRecorder(url: url, settings: settings)
             preparedRecorder?.delegate = self
             let recorderCreateDuration = Date().timeIntervalSince(recorderCreateStartTime) * 1000
-            print("⏰ [AudioService] 🎙️ AVAudioRecorder created in \(String(format: "%.0fms", recorderCreateDuration))")
+            timingLog("⏰ [AudioService] 🎙️ AVAudioRecorder created in \(String(format: "%.0fms", recorderCreateDuration))")
             
             // Aggressively prepare recorder
             let prepareToRecordStartTime = Date()
             preparedRecorder?.prepareToRecord()
             let prepareToRecordDuration = Date().timeIntervalSince(prepareToRecordStartTime) * 1000
-            print("⏰ [AudioService] ⚡ prepareToRecord() completed in \(String(format: "%.0fms", prepareToRecordDuration))")
+            timingLog("⏰ [AudioService] ⚡ prepareToRecord() completed in \(String(format: "%.0fms", prepareToRecordDuration))")
             
             // Pre-warm the timer to eliminate timer creation delay later
             let timerWarmupStartTime = Date()
@@ -105,27 +154,27 @@ class AudioService: NSObject {
             preWarmedTimer?.invalidate()
             preWarmedTimer = nil // Will recreate when needed
             let timerWarmupDuration = Date().timeIntervalSince(timerWarmupStartTime) * 1000
-            print("⏰ [AudioService] ⏱️ Timer warmup completed in \(String(format: "%.0fms", timerWarmupDuration))")
+            timingLog("⏰ [AudioService] ⏱️ Timer warmup completed in \(String(format: "%.0fms", timerWarmupDuration))")
             
             let totalPrepareDuration = Date().timeIntervalSince(prepareStartTime) * 1000
-            print("⏰ [AudioService] ✅ prepareRecording() completed in \(String(format: "%.0fms", totalPrepareDuration))")
+            timingLog("⏰ [AudioService] ✅ prepareRecording() completed in \(String(format: "%.0fms", totalPrepareDuration))")
         } catch {
             preparedRecorder = nil
-            print("⏰ [AudioService] ❌ prepareRecording() failed: \(error.localizedDescription)")
+            debugLog("⏰ [AudioService] ❌ prepareRecording() failed: \(error.localizedDescription)")
             throw AudioServiceError.recordingFailed
         }
     }
     
     func startPreparedRecording() async throws {
-        print("⏰ [AudioService] 🚀 startPreparedRecording() entered")
+        timingLog("⏰ [AudioService] 🚀 startPreparedRecording() entered")
         let startTime = Date()
         
         guard !isRecording else { 
-            print("⏰ [AudioService] ⚠️ Already recording, returning")
+            debugLog("⏰ [AudioService] ⚠️ Already recording, returning")
             return 
         }
         guard let preparedRecorder = preparedRecorder else {
-            print("⏰ [AudioService] ❌ No prepared recorder available")
+            debugLog("⏰ [AudioService] ❌ No prepared recorder available")
             throw AudioServiceError.recordingFailed
         }
         
@@ -146,11 +195,11 @@ class AudioService: NSObject {
         audioRecorder?.record()
         
         let recordDuration = Date().timeIntervalSince(recordStartTime) * 1000
-        print("⏰ [AudioService] ⚡ Ultra-fast record() completed in \(String(format: "%.0fms", recordDuration))")
+        timingLog("⏰ [AudioService] ⚡ Ultra-fast record() completed in \(String(format: "%.0fms", recordDuration))")
         
         // Use pre-warmed timer if available, otherwise create new one
         if let existingTimer = preWarmedTimer {
-            print("⏰ [AudioService] 🔥 Using pre-warmed timer")
+            timingLog("⏰ [AudioService] 🔥 Using pre-warmed timer")
             recordingTimer = existingTimer
             preWarmedTimer = nil
         } else {
@@ -159,11 +208,11 @@ class AudioService: NSObject {
                 self.recordingDuration = self.audioRecorder?.currentTime ?? 0
             }
             let timerDuration = Date().timeIntervalSince(timerStartTime) * 1000
-            print("⏰ [AudioService] ⏱️ New timer created in \(String(format: "%.0fms", timerDuration))")
+            timingLog("⏰ [AudioService] ⏱️ New timer created in \(String(format: "%.0fms", timerDuration))")
         }
         
         let totalDuration = Date().timeIntervalSince(startTime) * 1000
-        print("⏰ [AudioService] ✅ startPreparedRecording() completed in \(String(format: "%.0fms", totalDuration))")
+        timingLog("⏰ [AudioService] ✅ startPreparedRecording() completed in \(String(format: "%.0fms", totalDuration))")
     }
     
     func startRecording(to url: URL) async throws {
@@ -211,9 +260,9 @@ class AudioService: NSObject {
     }
     
     func playAudio(from url: URL) async throws {
-        print("⏰ [AudioService] 🎵 playAudio() method entered")
+        timingLog("⏰ [AudioService] 🎵 playAudio() method entered")
         guard !isPlaying else { 
-            print("⏰ [AudioService] ⚠️ Already playing, returning early")
+            debugLog("⏰ [AudioService] ⚠️ Already playing, returning early")
             return 
         }
         
@@ -222,27 +271,27 @@ class AudioService: NSObject {
         try await AudioSessionManager.shared.ensureSessionActive()
         
         do {
-            print("⏰ [AudioService] 🔧 Creating AVAudioPlayer")
+            timingLog("⏰ [AudioService] 🔧 Creating AVAudioPlayer")
             let playerCreateStartTime = Date()
             audioPlayer = try AVAudioPlayer(contentsOf: url)
             audioPlayer?.delegate = self
             audioPlayer?.prepareToPlay()
             let playerCreateDuration = Date().timeIntervalSince(playerCreateStartTime) * 1000
-            print("⏰ [AudioService] ✅ AVAudioPlayer created and prepared in \(String(format: "%.0fms", playerCreateDuration))")
+            timingLog("⏰ [AudioService] ✅ AVAudioPlayer created and prepared in \(String(format: "%.0fms", playerCreateDuration))")
             
             isPlaying = true
             
             // Start progress tracking timer
             startPlaybackProgressTracking()
             
-            print("⏰ [AudioService] ▶️ Calling audioPlayer.play()")
+            timingLog("⏰ [AudioService] ▶️ Calling audioPlayer.play()")
             let playStartTime = Date()
             audioPlayer?.play()
             let playCallDuration = Date().timeIntervalSince(playStartTime) * 1000
-            print("⏰ [AudioService] ✅ audioPlayer.play() call completed in \(String(format: "%.0fms", playCallDuration))")
+            timingLog("⏰ [AudioService] ✅ audioPlayer.play() call completed in \(String(format: "%.0fms", playCallDuration))")
             
             // 优化：使用Continuation等待播放完成，替代轮询
-            print("⏰ [AudioService] ⏳ Waiting for playback completion via delegate callback")
+            timingLog("⏰ [AudioService] ⏳ Waiting for playback completion via delegate callback")
             let waitStartTime = Date()
             
             // 使用continuation等待AVAudioPlayerDelegate回调
@@ -266,7 +315,7 @@ class AudioService: NSObject {
             }
             
             let totalWaitDuration = Date().timeIntervalSince(waitStartTime) * 1000
-            print("⏰ [AudioService] ✅ Playback completed via delegate callback after \(String(format: "%.0fms", totalWaitDuration))")
+            timingLog("⏰ [AudioService] ✅ Playback completed via delegate callback after \(String(format: "%.0fms", totalWaitDuration))")
             
             // Stop progress tracking
             stopPlaybackProgressTracking()
@@ -275,7 +324,7 @@ class AudioService: NSObject {
             onPlaybackComplete?()
             
             // Keep audio session active for subsequent recording operations
-            print("⏰ [AudioService] 🎵 Playback completed, keeping audio session active for recording")
+            debugLog("⏰ [AudioService] 🎵 Playback completed, keeping audio session active for recording")
             
         } catch {
             print("⏰ [AudioService] ❌ playAudio() failed with error: \(error.localizedDescription)")
@@ -289,15 +338,53 @@ class AudioService: NSObject {
             }
             
             // Keep audio session active even on failure, will be deactivated when PracticeView closes
-            print("⏰ [AudioService] ⚠️ Playback failed, keeping audio session active for cleanup by caller")
+            debugLog("⏰ [AudioService] ⚠️ Playback failed, keeping audio session active for cleanup by caller")
             
             throw AudioServiceError.playbackFailed
         }
         
-        print("⏰ [AudioService] 🎵 playAudio() method exiting")
+        timingLog("⏰ [AudioService] 🎵 playAudio() method exiting")
+    }
+    
+    private func restartPlaybackForDeviceChange() {
+        guard isPlaying else { return }
+        
+        Task { @MainActor in
+            print("🎧 [AudioService] Restarting playback for audio device change")
+            
+            // 获取当前播放状态
+            let currentTime = self.audioPlayer?.currentTime ?? 0
+            let url = self.audioPlayer?.url
+            
+            if let audioURL = url {
+                print("🎧 [AudioService] Recreating audio player for device routing")
+                
+                do {
+                    // 直接停止当前播放器但不清理continuation
+                    self.audioPlayer?.stop()
+                    
+                    // 重新创建播放器以使用新的音频路由
+                    self.audioPlayer = try AVAudioPlayer(contentsOf: audioURL)
+                    self.audioPlayer?.delegate = self
+                    self.audioPlayer?.prepareToPlay()
+                    self.audioPlayer?.currentTime = currentTime
+                    self.audioPlayer?.play()
+                    
+                    print("🎧 [AudioService] Audio player recreated and resumed at \(String(format: "%.1f", currentTime))s")
+                } catch {
+                    print("🎧 [AudioService] Failed to recreate audio player: \(error.localizedDescription)")
+                    // 如果重新创建失败，则完全停止播放
+                    self.stopPlayback(reason: .error)
+                }
+            }
+        }
     }
     
     func stopPlayback() {
+        stopPlayback(reason: .userRequested)
+    }
+    
+    func stopPlayback(reason: PlaybackStopReason) {
         audioPlayer?.stop()
         audioPlayer = nil
         isPlaying = false
@@ -306,14 +393,29 @@ class AudioService: NSObject {
         // 清理播放完成continuation
         if let continuation = playbackCompletionContinuation {
             playbackCompletionContinuation = nil
-            continuation.resume(throwing: CancellationError())
+            
+            switch reason {
+            case .deviceDisconnected:
+                // 设备断开是正常情况，不应该抛出错误
+                print("🎧 [AudioService] Playback stopped due to device disconnection - completing normally")
+                continuation.resume()
+            case .userRequested, .error:
+                // 用户请求停止或出错时抛出取消错误
+                continuation.resume(throwing: CancellationError())
+            }
         }
+    }
+    
+    enum PlaybackStopReason {
+        case userRequested
+        case deviceDisconnected  
+        case error
     }
     
     private func startPlaybackProgressTracking() {
         stopPlaybackProgressTracking() // Stop any existing timer
         
-        print("🎵 [AudioService] Starting playback progress tracking")
+        debugLog("🎵 [AudioService] Starting playback progress tracking")
         
         // Ensure timer runs on main queue for UI updates
         DispatchQueue.main.async { [weak self] in
@@ -322,7 +424,7 @@ class AudioService: NSObject {
             self.playbackProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
                 guard let self = self,
                       let player = self.audioPlayer else { 
-                    print("🎵 [AudioService] ⚠️ Progress tracking callback: no player available")
+                    debugLog("🎵 [AudioService] ⚠️ Progress tracking callback: no player available")
                     return 
                 }
                 
@@ -331,7 +433,7 @@ class AudioService: NSObject {
                 
                 // 每秒只打印一次进度日志，减少噪音
                 if Int(currentTime) != Int(currentTime - 0.1) {
-                    print("🎵 [AudioService] Progress: \(String(format: "%.1f", currentTime))/\(String(format: "%.1f", duration))s")
+                    debugLog("🎵 [AudioService] Progress: \(String(format: "%.1f", currentTime))/\(String(format: "%.1f", duration))s")
                 }
                 
                 if let callback = self.onPlaybackProgress {
@@ -350,7 +452,7 @@ class AudioService: NSObject {
         DispatchQueue.main.async { [weak self] in
             self?.playbackProgressTimer?.invalidate()
             self?.playbackProgressTimer = nil
-            print("🎵 [AudioService] Stopped playback progress tracking")
+            debugLog("🎵 [AudioService] Stopped playback progress tracking")
         }
     }
 }
@@ -365,7 +467,7 @@ extension AudioService: AVAudioRecorderDelegate {
 
 extension AudioService: AVAudioPlayerDelegate {
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        print("⏰ [AudioService] 🎵 AVAudioPlayerDelegate: playback finished successfully=\(flag)")
+        debugLog("⏰ [AudioService] 🎵 AVAudioPlayerDelegate: playback finished successfully=\(flag)")
         isPlaying = false
         audioPlayer = nil
         
@@ -405,26 +507,45 @@ class AudioSessionManager {
     static let shared = AudioSessionManager()
     
     private let audioSession = AVAudioSession.sharedInstance()
+    
+    // 统一的蓝牙设备检测函数
+    private func isBluetoothOutput(_ portType: AVAudioSession.Port) -> Bool {
+        return portType == .bluetoothA2DP || 
+               portType == .bluetoothHFP || 
+               portType == .bluetoothLE
+    }
     private var recordingWarmupRecorder: AVAudioRecorder?
     private var initializationError: Error?
     
+    // Re-entry protection for audio session reconfiguration
+    private var isReconfiguring = false
+    private let reconfigurationQueue = DispatchQueue(label: "com.selflie.audio.reconfiguration", qos: .userInitiated)
+    
+    // Callback for notifying audio service of playback interruptions
+    var playbackInterruptionHandler: ((AVAudioSession.RouteChangeReason) -> Void)?
+    
+    // Callback for notifying audio service to restart playback when new device becomes available
+    var playbackRestartHandler: (() -> Void)?
+    
     private init() {
         setupAudioSession()
+        setupRouteChangeObserver()
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: audioSession)
+        print("✅ [AudioSessionManager] Route change observer removed")
     }
     
     private func setupAudioSession() {
         do {
-            // 检测蓝牙设备连接状态，动态选择音频选项以避免冲突
-            let hasBluetoothDevice = isBluetoothAudioDeviceConnected()
-            let audioOptions: AVAudioSession.CategoryOptions = hasBluetoothDevice 
-                ? [.allowBluetoothA2DP] // 蓝牙设备：仅允许A2DP高质量音频
-                : [.defaultToSpeaker]   // 无蓝牙设备：默认使用扬声器
+            // playAndRecord 场景使用正确的音频选项组合
+            let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
             
             try audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
             try audioSession.setActive(true)
             
-            let deviceType = hasBluetoothDevice ? "Bluetooth A2DP" : "Phone Speaker"
-            print("✅ [AudioSessionManager] Audio session initialized for \(deviceType)")
+            print("✅ [AudioSessionManager] Audio session initialized with .defaultToSpeaker and .allowBluetooth")
             initializationError = nil // 清除任何之前的错误
         } catch {
             initializationError = error
@@ -432,14 +553,153 @@ class AudioSessionManager {
         }
     }
     
+    private func setupRouteChangeObserver() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRouteChange(_:)),
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+        print("✅ [AudioSessionManager] Route change observer registered for specific audio session")
+    }
+    
+    @objc private func handleRouteChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonRaw = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw) else {
+            print("⚠️ [AudioSessionManager] Route change notification received but could not parse reason")
+            return
+        }
+        
+        // Get previous route information for better decision making
+        var previousRoute: AVAudioSessionRouteDescription?
+        if let previousRouteObj = userInfo[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription {
+            previousRoute = previousRouteObj
+        }
+        
+        let currentRoute = audioSession.currentRoute
+        
+        print("🎧 [AudioSessionManager] Audio route changed - reason: \(reason)")
+        debugLog("🎧 [AudioSessionManager] Previous route: \(previousRoute?.outputs.map { "\($0.portName) (\($0.portType.rawValue))" } ?? ["None"])")
+        debugLog("🎧 [AudioSessionManager] Current route: \(currentRoute.outputs.map { "\($0.portName) (\($0.portType.rawValue))" })")
+        
+        switch reason {
+        case .oldDeviceUnavailable:
+            print("🎧 [AudioSessionManager] Device disconnected - handling playback and reconfiguring")
+            // Notify audio service to handle playback interruption
+            notifyPlaybackInterruption(reason: reason)
+            // 重新配置音频会话以适应设备移除（从蓝牙切换回扬声器）
+            Task { @MainActor in
+                await reconfigureAudioSessionForCurrentRoute()
+            }
+            
+        case .newDeviceAvailable, .routeConfigurationChange:
+            print("🎧 [AudioSessionManager] Route change detected - checking for Bluetooth")
+            
+            // 使用统一的蓝牙检测函数检查当前路由
+            let currentRoute = audioSession.currentRoute
+            let hasBluetooth = currentRoute.outputs.contains { isBluetoothOutput($0.portType) }
+            
+            print("🎧 [AudioSessionManager] Current route outputs:")
+            for output in currentRoute.outputs {
+                print("🎧   - \(output.portName) (\(output.portType.rawValue))")
+            }
+            print("🎧 [AudioSessionManager] Has Bluetooth: \(hasBluetooth)")
+            
+            if hasBluetooth {
+                // 关键：撤销扬声器强制，交给系统选AirPods
+                do {
+                    try audioSession.overrideOutputAudioPort(.none)
+                    try audioSession.setActive(true)
+                    print("🎧 [AudioSessionManager] ✅ Cleared audio port override, system routing to Bluetooth")
+                    notifyPlaybackRestart()
+                } catch {
+                    print("🎧 [AudioSessionManager] ❌ Failed to clear override: \(error.localizedDescription)")
+                }
+            } else {
+                print("🎧 [AudioSessionManager] No Bluetooth device in current route")
+            }
+            
+        case .categoryChange:
+            debugLog("🎧 [AudioSessionManager] Audio category changed - no action needed")
+            // Skip reconfiguration to avoid routing conflicts
+            
+        case .override:
+            debugLog("🎧 [AudioSessionManager] Route override - monitoring but not pausing playback")
+            // Don't pause playback for override changes
+            
+        case .wakeFromSleep:
+            debugLog("🎧 [AudioSessionManager] Wake from sleep - no action needed")
+            // Skip reconfiguration to avoid routing conflicts
+            
+        case .noSuitableRouteForCategory:
+            print("🎧 [AudioSessionManager] No suitable route for category - handling error")
+            // This might need special error handling
+            
+        default:
+            print("🎧 [AudioSessionManager] Route change reason '\(reason)' - no specific action needed")
+        }
+    }
+    
+    private func notifyPlaybackInterruption(reason: AVAudioSession.RouteChangeReason) {
+        playbackInterruptionHandler?(reason)
+    }
+    
+    private func notifyPlaybackRestart() {
+        playbackRestartHandler?()
+    }
+    
+    @MainActor
+    private func reconfigureAudioSessionForCurrentRoute() async {
+        // Re-entry protection: prevent multiple concurrent reconfigurations
+        return await withCheckedContinuation { continuation in
+            reconfigurationQueue.async {
+                guard !self.isReconfiguring else {
+                    debugLog("⚠️ [AudioSessionManager] Reconfiguration already in progress, skipping")
+                    continuation.resume()
+                    return
+                }
+                
+                self.isReconfiguring = true
+                defer { self.isReconfiguring = false }
+                
+                do {
+                    // playAndRecord 场景使用固定的正确选项组合
+                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+                    
+                    // Reconfigure the session with appropriate options
+                    try self.audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
+                    
+                    // Query updated hardware properties after route change (Apple best practice)
+                    let newSampleRate = self.audioSession.sampleRate
+                    let newIOBufferDuration = self.audioSession.ioBufferDuration
+                    let newInputChannels = self.audioSession.inputNumberOfChannels
+                    let newOutputChannels = self.audioSession.outputNumberOfChannels
+                    
+                    print("✅ [AudioSessionManager] Audio session reconfigured with .defaultToSpeaker and .allowBluetooth")
+                    hardwareLog("🎛️ [AudioSessionManager] Updated hardware properties:")
+                    hardwareLog("   Sample Rate: \(newSampleRate) Hz")
+                    hardwareLog("   IO Buffer Duration: \(newIOBufferDuration) seconds")
+                    hardwareLog("   Input Channels: \(newInputChannels)")
+                    hardwareLog("   Output Channels: \(newOutputChannels)")
+                    
+                } catch {
+                    print("❌ [AudioSessionManager] Failed to reconfigure audio session: \(error.localizedDescription)")
+                }
+                
+                continuation.resume()
+            }
+        }
+    }
+    
+    func getCurrentSampleRate() -> Double {
+        return audioSession.sampleRate
+    }
+    
     // Issue 1 Fix: AirPods audio routing support
     func isBluetoothAudioDeviceConnected() -> Bool {
         let route = AVAudioSession.sharedInstance().currentRoute
-        let hasBluetoothOutput = route.outputs.contains { output in
-            output.portType == .bluetoothA2DP || 
-            output.portType == .bluetoothHFP ||
-            output.portType == .bluetoothLE
-        }
+        let hasBluetoothOutput = route.outputs.contains { isBluetoothOutput($0.portType) }
         
         let hasBluetoothInput = route.inputs.contains { input in
             input.portType == .bluetoothHFP ||
@@ -461,13 +721,8 @@ class AudioSessionManager {
     }
     
     func getAudioSessionOptions(hasBluetoothDevice: Bool) -> AVAudioSession.CategoryOptions {
-        if hasBluetoothDevice {
-            // For AirPods and Bluetooth devices: allow Bluetooth A2DP, interrupt other audio apps
-            return [.allowBluetoothA2DP]
-        } else {
-            // For phone speaker: default to speaker, interrupt other audio apps
-            return [.defaultToSpeaker]
-        }
+        // playAndRecord 场景始终使用相同的选项组合
+        return [.defaultToSpeaker, .allowBluetoothHFP]
     }
     
     /// Ensure the audio session is active (session is already configured in init)
@@ -576,14 +831,21 @@ class AudioSessionManager {
         try audioSession.setActive(false)
         try await Task.sleep(nanoseconds: 100_000_000) // 0.1 second delay
         
-        // 重新设置为.playAndRecord（与初始化相同）
-        do {
-            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothA2DP, .defaultToSpeaker])
+        // 重新设置为.playAndRecord（使用当前路由的正确选项）
+        // Ensure audio session operations are performed on main thread (Apple best practice)
+        try await MainActor.run {
+            // playAndRecord 场景使用固定的正确选项组合
+            let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+            
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
             try audioSession.setActive(true)
-            print("✅ [AudioSessionManager] Audio session reset to .playAndRecord")
-        } catch {
-            print("❌ [AudioSessionManager] Failed to reset audio session: \(error.localizedDescription)")
-            throw error
+            
+            // Query hardware properties after reset (Apple best practice)
+            let sampleRate = audioSession.sampleRate
+            let bufferDuration = audioSession.ioBufferDuration
+            
+            print("✅ [AudioSessionManager] Audio session reset to .playAndRecord with .defaultToSpeaker and .allowBluetooth")
+            print("🎛️ [AudioSessionManager] Hardware properties after reset: \(sampleRate)Hz, \(bufferDuration)s buffer")
         }
         
         print("⏰ [AudioSessionManager] ✅ Audio session reset to \(mode) completed")

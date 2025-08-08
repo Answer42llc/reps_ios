@@ -712,53 +712,37 @@ struct PracticeView: View {
         // 标记已开始最终分析（在实际处理前设置，确保不会重复）
         hasProcessedFinalAnalysis = true
         
-        do {
-            if recognizedText.isEmpty {
-                let analysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
-                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔇 No speech detected during recording (analyzed in \(String(format: "%.0fms", analysisDuration)))")
-                await MainActor.run {
-                    silentRecordingDetected = true
-                    practiceState = .completed
-                }
-                return
-            }
-            
-            // Calculate similarity using embedding-based comparison
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📊 Calculating similarity between expected and recognized text")
-            let similarityStartTime = Date()
-            similarity = speechService.calculateSimilarity(expected: affirmation.text, recognized: recognizedText)
-            let similarityDuration = Date().timeIntervalSince(similarityStartTime) * 1000
-            
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔍 Calculated similarity: \(similarity) (threshold: 0.8) in \(String(format: "%.0fms", similarityDuration))")
-            
+        if recognizedText.isEmpty {
+            let analysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔇 No speech detected during recording (analyzed in \(String(format: "%.0fms", analysisDuration)))")
             await MainActor.run {
+                silentRecordingDetected = true
                 practiceState = .completed
-                
-                if similarity >= 0.8 {
-                    print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎉 Similarity above threshold - incrementing count")
-                    incrementCount()
-                } else {
-                    print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📈 Similarity below threshold - encouraging retry")
-                }
             }
-            
-            let totalAnalysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech analysis completed in \(String(format: "%.0fms", totalAnalysisDuration))")
-            
-        } catch {
-            // 错误边界处理：重置防护标志以允许重试
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Speech analysis failed: \(error.localizedDescription)")
-            hasProcessedFinalAnalysis = false
-            capturedRecognitionText = ""
-            
-            await MainActor.run {
-                practiceState = .completed
-                showError("Analysis failed: \(error.localizedDescription)")
-            }
-            
-            let failedAnalysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Analysis failed after \(String(format: "%.0fms", failedAnalysisDuration)), flags reset for retry")
+            return
         }
+        
+        // Calculate similarity using embedding-based comparison
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📊 Calculating similarity between expected and recognized text")
+        let similarityStartTime = Date()
+        similarity = speechService.calculateSimilarity(expected: affirmation.text, recognized: recognizedText)
+        let similarityDuration = Date().timeIntervalSince(similarityStartTime) * 1000
+        
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔍 Calculated similarity: \(similarity) (threshold: 0.8) in \(String(format: "%.0fms", similarityDuration))")
+        
+        await MainActor.run {
+            practiceState = .completed
+            
+            if similarity >= 0.8 {
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎉 Similarity above threshold - incrementing count")
+                incrementCount()
+            } else {
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📈 Similarity below threshold - encouraging retry")
+            }
+        }
+        
+        let totalAnalysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech analysis completed in \(String(format: "%.0fms", totalAnalysisDuration))")
     }
     
     private func incrementCount() {

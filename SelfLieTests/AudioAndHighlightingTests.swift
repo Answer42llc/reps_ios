@@ -23,7 +23,6 @@ final class AudioAndHighlightingTests: XCTestCase {
         
         // Test that Bluetooth options are returned when Bluetooth device is present
         let bluetoothOptions = audioSessionManager.getAudioSessionOptions(hasBluetoothDevice: true)
-        XCTAssertTrue(bluetoothOptions.contains(.allowBluetooth), "Should include .allowBluetooth for Bluetooth devices")
         XCTAssertTrue(bluetoothOptions.contains(.allowBluetoothA2DP), "Should include .allowBluetoothA2DP for Bluetooth devices")
     }
     
@@ -275,7 +274,7 @@ extension AudioSessionManager {
     func getAudioSessionOptions(hasBluetoothDevice: Bool) -> AVAudioSession.CategoryOptions {
         // This will be implemented as part of our fix
         return hasBluetoothDevice 
-            ? [.allowBluetooth, .allowBluetoothA2DP]
+            ? [.allowBluetoothA2DP]
             : [.defaultToSpeaker]
     }
 }
