@@ -437,6 +437,8 @@ struct PracticeView: View {
         // Reset highlighting for fresh playback
         highlightedWordIndices.removeAll()
         currentWordIndex = -1
+        // Initialize word timings once at the start of playback
+        initializeWordTimings()
         let stateUpdateDuration = Date().timeIntervalSince(stateUpdateStartTime) * 1000
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚡ PRECISE: State update completed in \(String(format: "%.0fms", stateUpdateDuration))")
         
@@ -861,14 +863,32 @@ struct PracticeView: View {
             Task { @MainActor in
                 self.audioDuration = duration
                 
-                // Initialize word timings if not already done
-                self.initializeWordTimings()
+                // 添加详细的播放时序匹配日志
+                print("🎵 [PracticeView] Audio playback progress: \(String(format: "%.3f", currentTime))s / \(String(format: "%.3f", duration))s")
+                
+                // 显示当前时间点附近的词时序信息
+                if !self.wordTimings.isEmpty {
+                    let relevantTimings = self.wordTimings.enumerated().filter { index, timing in
+                        abs(timing.startTime - currentTime) <= 0.5 || abs(timing.endTime - currentTime) <= 0.5
+                    }
+                    if !relevantTimings.isEmpty {
+                        print("🎵   Nearby word timings:")
+                        for (index, timing) in relevantTimings {
+                            let status = (currentTime >= timing.startTime && currentTime < timing.endTime) ? "CURRENT" : "nearby"
+                            print("🎵     [\(index)] '\(timing.word)' \(String(format: "%.3f", timing.startTime))s-\(String(format: "%.3f", timing.endTime))s (\(status))")
+                        }
+                    }
+                }
                 
                 // Update current word index based on playback progress
                 let newWordIndex = NativeTextHighlighter.getWordIndexForTime(currentTime, wordTimings: self.wordTimings)
                 
                 if newWordIndex != self.currentWordIndex {
-                    print("🎯 [PracticeView] Updating word index from \(self.currentWordIndex) to \(newWordIndex) at time \(String(format: "%.2f", currentTime))s")
+                    print("🎯 [PracticeView] Updating word index from \(self.currentWordIndex) to \(newWordIndex) at time \(String(format: "%.3f", currentTime))s")
+                    if newWordIndex >= 0 && newWordIndex < self.wordTimings.count {
+                        let currentTiming = self.wordTimings[newWordIndex]
+                        print("🎯   Current word: '\(currentTiming.word)' (\(String(format: "%.3f", currentTiming.startTime))s-\(String(format: "%.3f", currentTiming.endTime))s)")
+                    }
                     self.currentWordIndex = newWordIndex
                     
                     // Update highlighted words to include all words up to current
@@ -877,6 +897,7 @@ struct PracticeView: View {
                         print("🎯 [PracticeView] Highlighted words: \(self.highlightedWordIndices)")
                     } else {
                         self.highlightedWordIndices.removeAll()
+                        print("🎯 [PracticeView] No words highlighted (before first word)")
                     }
                 }
             }
@@ -931,6 +952,13 @@ struct PracticeView: View {
         // Load precise word timings from the affirmation
         wordTimings = affirmation.wordTimings
         
+        // 添加详细的时序数据日志
+        print("🎯 [PracticeView] Loaded word timings for text: '\(affirmation.text)'")
+        print("🎯 [PracticeView] Found \(wordTimings.count) word timings:")
+        for (index, timing) in wordTimings.enumerated() {
+            print("🎯   [\(index)] '\(timing.word)' -> \(String(format: "%.3f", timing.startTime))s - \(String(format: "%.3f", timing.endTime))s (duration: \(String(format: "%.3f", timing.duration))s, confidence: \(String(format: "%.2f", timing.confidence)))")
+        }
+        
         // Check if we need to regenerate timings for Chinese text
         let needsRegeneration = shouldRegenerateTimings()
         
@@ -941,9 +969,12 @@ struct PracticeView: View {
             }
             return
         }
+        
         // If no timings exist, create basic fallback
-        print("⚠️ [PracticeView] No word timings available, using fallback")
-        createFallbackTimings()
+        if wordTimings.isEmpty {
+            print("⚠️ [PracticeView] No word timings available, using fallback")
+            createFallbackTimings()
+        }
     }
     
     private func shouldRegenerateTimings() -> Bool {

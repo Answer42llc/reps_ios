@@ -80,3 +80,8 @@ struct Affirmation {
 - Conduct entire thinking process in English
 - Ensure accurate and context-aware translation
 - Always maintain the original intent of the instruction
+
+## Code Editing Guidelines
+- When your plan is about to edit codes, you MUST show what currently needs to be fixed and what the new codes after fixed.
+- 完成修改后进入 plan mode
+- 尽量避免使用任何的time delay来解决问题，请使用更加可靠的解决方案，直击问题本身。

@@ -319,7 +319,7 @@ class AudioService: NSObject {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             
-            self.playbackProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self.playbackProgressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
                 guard let self = self,
                       let player = self.audioPlayer else { 
                     print("🎵 [AudioService] ⚠️ Progress tracking callback: no player available")

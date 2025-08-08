@@ -12,8 +12,6 @@ struct NativeTextHighlighter: View {
             .font(.title)
             .fontWeight(.medium)
             .multilineTextAlignment(.center)
-            .animation(.easeInOut(duration: 0.3), value: highlightedWordIndices)
-            .animation(.easeInOut(duration: 0.3), value: currentWordIndex)
     }
     
     /// Creates AttributedString with highlighted words using Apple's universal text processing
