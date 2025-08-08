@@ -5,6 +5,31 @@ import Foundation
 /// Replaces LanguageUtils with system-level multi-language support
 struct UniversalTextProcessor {
     
+    // MARK: - Thread-Safe Caching Mechanism
+    private static let cacheQueue = DispatchQueue(label: "text-processor-cache", attributes: .concurrent)
+    private static var _segmentationCache: [String: [TextUnit]] = [:]
+    private static let maxCacheSize = 500 // 增加缓存容量
+    
+    private static func getCache(for text: String) -> [TextUnit]? {
+        return cacheQueue.sync {
+            return _segmentationCache[text]
+        }
+    }
+    
+    private static func setCache(for text: String, result: [TextUnit]) {
+        cacheQueue.async(flags: .barrier) {
+            // 清理缓存如果超出限制
+            if _segmentationCache.count >= maxCacheSize {
+                // 移除最旧的一半缓存项
+                let keysToRemove = Array(_segmentationCache.keys.prefix(maxCacheSize / 2))
+                keysToRemove.forEach { _segmentationCache.removeValue(forKey: $0) }
+            }
+            _segmentationCache[text] = result
+        }
+    }
+    
+    private static var debugLogsEnabled = false
+    
     /// Text unit representation for universal text processing
     struct TextUnit {
         let originalText: String  // Original text for display (preserves capitalization)
@@ -41,9 +66,11 @@ struct UniversalTextProcessor {
             }
         }
         
-        print("🌍 [UniversalTextProcessor] Segmented '\(text)' into \(textUnits.count) units")
-        for (index, unit) in textUnits.enumerated() {
-            print("   Unit \(index): '\(unit.originalText)' (normalized: '\(unit.text)') at range \(unit.range)")
+        if debugLogsEnabled {
+            print("🌍 [UniversalTextProcessor] Segmented '\(text)' into \(textUnits.count) units")
+            for (index, unit) in textUnits.enumerated() {
+                print("   Unit \(index): '\(unit.originalText)' (normalized: '\(unit.text)') at range \(unit.range)")
+            }
         }
         
         return textUnits
@@ -73,26 +100,41 @@ struct UniversalTextProcessor {
             textUnits.append(textUnit)
         }
         
-        print("🔤 [UniversalTextProcessor] Word-segmented '\(text)' into \(textUnits.count) words")
+        if debugLogsEnabled {
+            print("🔤 [UniversalTextProcessor] Word-segmented '\(text)' into \(textUnits.count) words")
+        }
         return textUnits
     }
     
     /// Intelligently chooses the best segmentation method based on text characteristics
-    /// Uses system-level language detection to determine optimal processing
+    /// Uses system-level language detection to determine optimal processing with thread-safe caching
     /// - Parameter text: The text to process
     /// - Returns: Array of appropriately segmented text units
     static func smartSegmentText(_ text: String) -> [TextUnit] {
+        // Check cache first (thread-safe)
+        if let cachedResult = getCache(for: text) {
+            return cachedResult
+        }
+        
         // Determine the best segmentation approach based on language characteristics
-        // For simplicity and reliability, use CJK detection approach
+        let result: [TextUnit]
         if containsCJKCharacters(text) {
             // CJK languages work better with character-level segmentation
-            print("🔍 [UniversalTextProcessor] Using character-level segmentation for CJK text: '\(text)'")
-            return segmentText(text)
+            if debugLogsEnabled {
+                print("🔍 [UniversalTextProcessor] Using character-level segmentation for CJK text: '\(text)'")
+            }
+            result = segmentText(text)
         } else {
             // Non-CJK languages work better with word-level segmentation
-            print("🔍 [UniversalTextProcessor] Using word-level segmentation for non-CJK text: '\(text)'")
-            return segmentTextByWords(text)
+            if debugLogsEnabled {
+                print("🔍 [UniversalTextProcessor] Using word-level segmentation for non-CJK text: '\(text)'")
+            }
+            result = segmentTextByWords(text)
         }
+        
+        // Cache the result (thread-safe)
+        setCache(for: text, result: result)
+        return result
     }
     
     /// Convert TextUnit array to simple string array for display
@@ -139,7 +181,9 @@ struct UniversalTextProcessor {
             }
         }
         
-        print("🎯 [UniversalTextProcessor] Matched \(matchedIndices.count)/\(expectedUnits.count) units")
+        if debugLogsEnabled {
+            print("🎯 [UniversalTextProcessor] Matched \(matchedIndices.count)/\(expectedUnits.count) units")
+        }
         return matchedIndices
     }
     
@@ -183,6 +227,29 @@ struct UniversalTextProcessor {
         }
         
         return matrix[s1Count][s2Count]
+    }
+}
+
+// MARK: - Cache Management
+extension UniversalTextProcessor {
+    
+    /// Clear segmentation cache (thread-safe)
+    static func clearSegmentationCache() {
+        cacheQueue.async(flags: .barrier) {
+            _segmentationCache.removeAll()
+        }
+    }
+    
+    /// Enable or disable debug logs
+    static func setDebugLogsEnabled(_ enabled: Bool) {
+        debugLogsEnabled = enabled
+    }
+    
+    /// Get cache statistics for monitoring (thread-safe)
+    static func getCacheStatistics() -> (count: Int, maxSize: Int) {
+        return cacheQueue.sync {
+            return (_segmentationCache.count, maxCacheSize)
+        }
     }
 }
 

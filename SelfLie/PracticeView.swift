@@ -39,16 +39,30 @@ struct PracticeView: View {
     @State private var capturedRecognitionText: String = ""
     @State private var hasProcessedFinalAnalysis = false
     
-    private var practiceURL: URL {
+    // 语言检测缓存
+    @State private var cachedLanguageResult: String? = nil
+    @State private var hasPerformedLanguageDetection = false
+    
+    // 临时录音文件URL - 使用@State确保一致性
+    @State private var practiceURL: URL = {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return documentsPath.appendingPathComponent("\(UUID().uuidString).m4a")
-    }
+    }()
     
     // Helper function to calculate elapsed time with millisecond precision
     private func elapsedTime(from startTime: Date?) -> String {
         guard let startTime = startTime else { return "N/A" }
         let elapsed = Date().timeIntervalSince(startTime) * 1000 // Convert to milliseconds
         return String(format: "%.0fms", elapsed)
+    }
+    
+    // Helper function to verify file existence with logging
+    private func verifyFileExists(at url: URL, context: String = "") -> Bool {
+        let exists = FileManager.default.fileExists(atPath: url.path)
+        if !exists {
+            print("❌ [PracticeView] File not found at: \(url.path) \(context.isEmpty ? "" : "(\(context))")")
+        }
+        return exists
     }
     
     var body: some View {
@@ -93,6 +107,7 @@ struct PracticeView: View {
             appearTime = Date()
             print("⏰ [PracticeView] View appeared at \(elapsedTime(from: appearTime))")
             setupServiceCallbacks()
+            performInitialLanguageDetection()
             Task {
                 await startPracticeFlow()
             }
@@ -344,11 +359,11 @@ struct PracticeView: View {
             return
         }
         
-        // Set up audio session immediately after permissions
-        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔧 Setting up audio session")
+        // Set up audio session immediately after permissions for playback (first step)
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔧 Setting up audio session for playback")
         let audioSessionStartTime = Date()
         do {
-            try await AudioSessionManager.shared.setupForPlayAndRecord()
+            try await AudioSessionManager.shared.ensureSessionActive()
             let audioSessionDuration = Date().timeIntervalSince(audioSessionStartTime) * 1000
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Audio session ready in \(String(format: "%.0fms", audioSessionDuration))")
         } catch {
@@ -432,8 +447,8 @@ struct PracticeView: View {
         }
         
         // Check if file actually exists
-        guard FileManager.default.fileExists(atPath: audioURL.path) else {
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Audio file missing at path: \(audioURL.path)")
+        guard verifyFileExists(at: audioURL, context: "playback verification") else {
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Audio file missing for playback")
             showError("Audio file missing at: \(audioURL.path)")
             return
         }
@@ -514,7 +529,7 @@ struct PracticeView: View {
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🗣️ PRECISE: About to start speech recognition for text: '\(affirmation.text)'")
             
             do {
-                try speechService.startRecognition(expectedText: affirmation.text)
+                try speechService.startRecognition(expectedText: affirmation.text, localeIdentifier: cachedLanguageResult)
                 let speechDuration = Date().timeIntervalSince(speechStartTime) * 1000
                 print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ PRECISE: Speech recognition started in \(String(format: "%.0fms", speechDuration))")
             } catch {
@@ -525,7 +540,7 @@ struct PracticeView: View {
                 do {
                     try await AudioSessionManager.shared.resetAudioSession()
                     let retryStartTime = Date()
-                    try speechService.startRecognition(expectedText: affirmation.text)
+                    try speechService.startRecognition(expectedText: affirmation.text, localeIdentifier: cachedLanguageResult)
                     let retryDuration = Date().timeIntervalSince(retryStartTime) * 1000
                     print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ PRECISE: Speech recognition retry succeeded in \(String(format: "%.0fms", retryDuration))")
                 } catch {
@@ -595,7 +610,7 @@ struct PracticeView: View {
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🗣️ Starting speech recognition for text: '\(affirmation.text)'")
             let speechStartTime = Date()
             do {
-                try speechService.startRecognition(expectedText: affirmation.text)
+                try speechService.startRecognition(expectedText: affirmation.text, localeIdentifier: cachedLanguageResult)
                 let speechDuration = Date().timeIntervalSince(speechStartTime) * 1000
                 print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech recognition started in \(String(format: "%.0fms", speechDuration))")
             } catch {
@@ -604,7 +619,7 @@ struct PracticeView: View {
                 // Brief delay before retry
                 try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
                 let retryStartTime = Date()
-                try speechService.startRecognition(expectedText: affirmation.text)
+                try speechService.startRecognition(expectedText: affirmation.text, localeIdentifier: cachedLanguageResult)
                 let retryDuration = Date().timeIntervalSince(retryStartTime) * 1000
                 print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech recognition retry succeeded in \(String(format: "%.0fms", retryDuration))")
             }
@@ -680,43 +695,59 @@ struct PracticeView: View {
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📝 Using current speechService text: '\(recognizedText)'")
         }
         
-        // 标记已开始最终分析
-        hasProcessedFinalAnalysis = true
-        
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 Expected text: '\(affirmation.text)'")
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Recognized text: '\(recognizedText)'")
         
-        if recognizedText.isEmpty {
-            let analysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔇 No speech detected during recording (analyzed in \(String(format: "%.0fms", analysisDuration)))")
-            await MainActor.run {
-                silentRecordingDetected = true
-                practiceState = .completed
+        // 标记已开始最终分析（在实际处理前设置，确保不会重复）
+        hasProcessedFinalAnalysis = true
+        
+        do {
+            if recognizedText.isEmpty {
+                let analysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔇 No speech detected during recording (analyzed in \(String(format: "%.0fms", analysisDuration)))")
+                await MainActor.run {
+                    silentRecordingDetected = true
+                    practiceState = .completed
+                }
+                return
             }
-            return
-        }
-        
-        // Calculate similarity using embedding-based comparison
-        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📊 Calculating similarity between expected and recognized text")
-        let similarityStartTime = Date()
-        similarity = speechService.calculateSimilarity(expected: affirmation.text, recognized: recognizedText)
-        let similarityDuration = Date().timeIntervalSince(similarityStartTime) * 1000
-        
-        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔍 Calculated similarity: \(similarity) (threshold: 0.8) in \(String(format: "%.0fms", similarityDuration))")
-        
-        await MainActor.run {
-            practiceState = .completed
             
-            if similarity >= 0.8 {
-                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎉 Similarity above threshold - incrementing count")
-                incrementCount()
-            } else {
-                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📈 Similarity below threshold - encouraging retry")
+            // Calculate similarity using embedding-based comparison
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📊 Calculating similarity between expected and recognized text")
+            let similarityStartTime = Date()
+            similarity = speechService.calculateSimilarity(expected: affirmation.text, recognized: recognizedText)
+            let similarityDuration = Date().timeIntervalSince(similarityStartTime) * 1000
+            
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔍 Calculated similarity: \(similarity) (threshold: 0.8) in \(String(format: "%.0fms", similarityDuration))")
+            
+            await MainActor.run {
+                practiceState = .completed
+                
+                if similarity >= 0.8 {
+                    print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎉 Similarity above threshold - incrementing count")
+                    incrementCount()
+                } else {
+                    print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📈 Similarity below threshold - encouraging retry")
+                }
             }
+            
+            let totalAnalysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech analysis completed in \(String(format: "%.0fms", totalAnalysisDuration))")
+            
+        } catch {
+            // 错误边界处理：重置防护标志以允许重试
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Speech analysis failed: \(error.localizedDescription)")
+            hasProcessedFinalAnalysis = false
+            capturedRecognitionText = ""
+            
+            await MainActor.run {
+                practiceState = .completed
+                showError("Analysis failed: \(error.localizedDescription)")
+            }
+            
+            let failedAnalysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Analysis failed after \(String(format: "%.0fms", failedAnalysisDuration)), flags reset for retry")
         }
-        
-        let totalAnalysisDuration = Date().timeIntervalSince(analysisStartTime) * 1000
-        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech analysis completed in \(String(format: "%.0fms", totalAnalysisDuration))")
     }
     
     private func incrementCount() {
@@ -743,6 +774,12 @@ struct PracticeView: View {
             // Reset text highlighting to original colors
             resetTextHighlighting()
             isReplaying = false
+            
+            // Reset duplicate analysis protection flags
+            hasProcessedFinalAnalysis = false
+            capturedRecognitionText = ""
+            hasGoodSimilarity = false
+            print("🔄 [PracticeView] Reset analysis protection flags for restart")
         }
         await startPracticeFlow()
     }
@@ -767,7 +804,7 @@ struct PracticeView: View {
         maxRecordingTimer = nil
         
         // Clean up temporary recording file
-        if FileManager.default.fileExists(atPath: practiceURL.path) {
+        if verifyFileExists(at: practiceURL, context: "cleanup verification") {
             do {
                 try FileManager.default.removeItem(at: practiceURL)
                 print("🗑️ [PracticeView] Cleaned up temporary recording file: \(practiceURL.path)")
@@ -786,6 +823,14 @@ struct PracticeView: View {
                 print("⚠️ [PracticeView] Failed to deactivate audio session: \(error.localizedDescription)")
             }
         }
+        
+        // Clear all callbacks to prevent memory leaks
+        print("🧹 [PracticeView] Clearing service callbacks")
+        audioService.onPlaybackProgress = nil
+        audioService.onPlaybackComplete = nil
+        speechService.onWordRecognized = nil
+        speechService.onAudioLevelUpdate = nil
+        speechService.onSilenceDetected = nil
     }
     
     private func monitorSilenceForSmartStop() {
@@ -797,6 +842,15 @@ struct PracticeView: View {
                     await self.stopRecording()
                 }
             }
+        }
+    }
+    
+    private func performInitialLanguageDetection() {
+        if !hasPerformedLanguageDetection {
+            let localeIdentifier = LanguageDetector.getLocaleIdentifier(from: affirmation.text)
+            cachedLanguageResult = localeIdentifier
+            hasPerformedLanguageDetection = true
+            print("🌍 [PracticeView] Cached language detection result: \(localeIdentifier)")
         }
     }
     
@@ -887,18 +941,6 @@ struct PracticeView: View {
             }
             return
         }
-        
-        // Skip if we already have proper timings
-        if !wordTimings.isEmpty {
-            print("✅ [PracticeView] Loaded precise word timings: \(wordTimings.count) words")
-            
-            // Log timing details for debugging
-            for (index, timing) in wordTimings.enumerated() {
-                print("📍 Word \(index): '\(timing.word)' at \(String(format: "%.2f", timing.startTime))s-\(String(format: "%.2f", timing.endTime))s")
-            }
-            return
-        }
-        
         // If no timings exist, create basic fallback
         print("⚠️ [PracticeView] No word timings available, using fallback")
         createFallbackTimings()
@@ -921,7 +963,7 @@ struct PracticeView: View {
     
     private func regenerateWordTimings() async {
         guard let audioURL = affirmation.audioURL,
-              FileManager.default.fileExists(atPath: audioURL.path) else {
+              verifyFileExists(at: audioURL, context: "word timing regeneration") else {
             print("❌ [PracticeView] Cannot regenerate: audio file not found")
             return
         }

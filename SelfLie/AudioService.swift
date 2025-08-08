@@ -8,6 +8,21 @@ class AudioService: NSObject {
     private var preparedRecorder: AVAudioRecorder?
     private var preWarmedTimer: Timer?
     
+    // Helper function to get hardware-compatible audio settings
+    private func getAudioSettings() -> [String: Any] {
+        let audioSession = AVAudioSession.sharedInstance()
+        let hardwareSampleRate = audioSession.sampleRate
+        
+        print("🎙️ [AudioService] Using hardware sample rate: \(hardwareSampleRate) Hz")
+        
+        return [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: hardwareSampleRate, // Use hardware sample rate
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+    }
+    
     var isRecording = false
     var isPlaying = false
     var recordingDuration: TimeInterval = 0
@@ -59,12 +74,7 @@ class AudioService: NSObject {
         let directoryDuration = Date().timeIntervalSince(directoryStartTime) * 1000
         print("⏰ [AudioService] 📁 Directory creation in \(String(format: "%.0fms", directoryDuration))")
         
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: 44100,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
+        let settings = getAudioSettings()
         
         do {
             // Create recorder
@@ -119,6 +129,10 @@ class AudioService: NSObject {
             throw AudioServiceError.recordingFailed
         }
         
+        // Audio session is already configured for .playAndRecord in AudioSessionManager.init()
+        // No need to switch - just ensure it's active
+        try await AudioSessionManager.shared.ensureSessionActive()
+        
         // Ultra-fast recording start: minimize operations
         let recordStartTime = Date()
         
@@ -159,12 +173,7 @@ class AudioService: NSObject {
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: nil)
         
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: 44100,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
+        let settings = getAudioSettings()
         
         do {
             audioRecorder = try AVAudioRecorder(url: url, settings: settings)
@@ -208,9 +217,9 @@ class AudioService: NSObject {
             return 
         }
         
-        // CRITICAL FIX: Setup audio session for playback before creating AVAudioPlayer
-        print("⏰ [AudioService] 🔧 Setting up audio session for playback")
-        try await AudioSessionManager.shared.setupForPlayAndRecord()
+        // Audio session is already configured for .playAndRecord in AudioSessionManager.init()
+        // No need to switch - just ensure it's active
+        try await AudioSessionManager.shared.ensureSessionActive()
         
         do {
             print("⏰ [AudioService] 🔧 Creating AVAudioPlayer")
@@ -320,14 +329,16 @@ class AudioService: NSObject {
                 let currentTime = player.currentTime
                 let duration = player.duration
                 
-                print("🎵 [AudioService] Progress: \(String(format: "%.2f", currentTime))/\(String(format: "%.2f", duration))s")
+                // 每秒只打印一次进度日志，减少噪音
+                if Int(currentTime) != Int(currentTime - 0.1) {
+                    print("🎵 [AudioService] Progress: \(String(format: "%.1f", currentTime))/\(String(format: "%.1f", duration))s")
+                }
                 
                 if let callback = self.onPlaybackProgress {
                     callback(currentTime, duration)
-                    print("🎵 [AudioService] ✅ Called onPlaybackProgress callback")
-                } else {
-                    print("🎵 [AudioService] ⚠️ No onPlaybackProgress callback set!")
+                    // Note: Removed frequent callback success log to reduce noise
                 }
+                // Note: Removed missing callback warning as it may occur normally during replay
             }
             
             // Add timer to main run loop
@@ -394,10 +405,32 @@ class AudioSessionManager {
     static let shared = AudioSessionManager()
     
     private let audioSession = AVAudioSession.sharedInstance()
-    private var isConfiguredForPlayAndRecord = false
     private var recordingWarmupRecorder: AVAudioRecorder?
+    private var initializationError: Error?
     
-    private init() {}
+    private init() {
+        setupAudioSession()
+    }
+    
+    private func setupAudioSession() {
+        do {
+            // 检测蓝牙设备连接状态，动态选择音频选项以避免冲突
+            let hasBluetoothDevice = isBluetoothAudioDeviceConnected()
+            let audioOptions: AVAudioSession.CategoryOptions = hasBluetoothDevice 
+                ? [.allowBluetoothA2DP] // 蓝牙设备：仅允许A2DP高质量音频
+                : [.defaultToSpeaker]   // 无蓝牙设备：默认使用扬声器
+            
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
+            try audioSession.setActive(true)
+            
+            let deviceType = hasBluetoothDevice ? "Bluetooth A2DP" : "Phone Speaker"
+            print("✅ [AudioSessionManager] Audio session initialized for \(deviceType)")
+            initializationError = nil // 清除任何之前的错误
+        } catch {
+            initializationError = error
+            print("❌ [AudioSessionManager] Failed to initialize audio session: \(error.localizedDescription)")
+        }
+    }
     
     // Issue 1 Fix: AirPods audio routing support
     func isBluetoothAudioDeviceConnected() -> Bool {
@@ -437,123 +470,64 @@ class AudioSessionManager {
         }
     }
     
-    func setupForPlayAndRecord() async throws {
-        guard !isConfiguredForPlayAndRecord else { 
-            // Even if already configured, check if we need to update routing
-            try await updateAudioRouting()
-            return 
+    /// Ensure the audio session is active (session is already configured in init)
+    func ensureSessionActive() async throws {
+
+        // 首先检查初始化是否成功
+        if let initError = initializationError {
+            print("❌ [AudioSessionManager] Cannot ensure session active due to initialization failure")
+            throw initError
         }
         
-        print("⏰ [AudioSessionManager] 🔧 Setting up audio session for play and record")
-        let setupStartTime = Date()
-        
-        // Issue 1 Fix: Detect connected audio devices and choose appropriate routing
-        let hasBluetoothDevice = isBluetoothAudioDeviceConnected()
-        let options = getAudioSessionOptions(hasBluetoothDevice: hasBluetoothDevice)
-        
-        do {
-            try audioSession.setCategory(.playAndRecord, mode: .default, options: options)
-            try audioSession.setActive(true)
-            
-            // Force audio routing to preferred output
-            try await forceAudioRouting(hasBluetoothDevice: hasBluetoothDevice)
-            
-            isConfiguredForPlayAndRecord = true
-            
-            let setupDuration = Date().timeIntervalSince(setupStartTime) * 1000
-            let deviceType = hasBluetoothDevice ? "Bluetooth (AirPods/Headphones)" : "Phone Speaker"
-            print("⏰ [AudioSessionManager] ✅ Audio session configured for \(deviceType) in \(String(format: "%.0fms", setupDuration))")
-        } catch {
-            print("⏰ [AudioSessionManager] ❌ Failed to setup audio session: \(error.localizedDescription)")
-            throw error
-        }
-    }
-    
-    private func updateAudioRouting() async throws {
-        let hasBluetoothDevice = isBluetoothAudioDeviceConnected()
-        try await forceAudioRouting(hasBluetoothDevice: hasBluetoothDevice)
-    }
-    
-    private func forceAudioRouting(hasBluetoothDevice: Bool) async throws {
-        if hasBluetoothDevice {
-            print("🎧 [AudioSessionManager] Forcing audio routing to Bluetooth device")
-            
-            // iOS 17+ AirPods Pro 2 routing fix: Multiple attempts with verification
-            var routingSuccess = false
-            let maxRetries = 3
-            
-            for attempt in 1...maxRetries {
-                print("🎧 [AudioSessionManager] Routing attempt \(attempt)/\(maxRetries)")
-                
-                // Override the output port to preferred Bluetooth device
-                do {
-                    try audioSession.overrideOutputAudioPort(.none) // Clear any speaker override
-                    print("🎧 [AudioSessionManager] ✅ Cleared speaker override (attempt \(attempt))")
-                    
-                    // Short delay to allow routing to settle
-                    try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-                    
-                    // Verify the routing worked
-                    let route = audioSession.currentRoute
-                    let hasBluetoothOutput = route.outputs.contains { $0.portType == .bluetoothA2DP }
-                    let currentOutputs = route.outputs.map { "\($0.portName) (\($0.portType.rawValue))" }
-                    
-                    print("🎧 [AudioSessionManager] Post-routing check (attempt \(attempt)) - Current outputs: \(currentOutputs)")
-                    print("🎧 [AudioSessionManager] Bluetooth output active: \(hasBluetoothOutput)")
-                    
-                    if hasBluetoothOutput {
-                        routingSuccess = true
-                        print("🎧 [AudioSessionManager] ✅ Bluetooth routing successful on attempt \(attempt)")
-                        break
-                    } else if attempt < maxRetries {
-                        print("🎧 [AudioSessionManager] ⚠️ Bluetooth routing failed on attempt \(attempt), retrying...")
-                        // Force session reconfiguration for iOS 17+ AirPods Pro 2 fix
-                        try audioSession.setActive(false)
-                        try await Task.sleep(nanoseconds: 200_000_000) // 0.2 seconds
-                        try audioSession.setActive(true)
-                    }
-                    
-                } catch {
-                    print("🎧 [AudioSessionManager] ⚠️ Failed to clear speaker override (attempt \(attempt)): \(error.localizedDescription)")
-                    if attempt == maxRetries {
-                        throw error
-                    }
-                }
+        // 检查会话是否已经激活，避免重复操作
+        if audioSession.isOtherAudioPlaying == false && audioSession.secondaryAudioShouldBeSilencedHint == false {
+            // 会话可能已经激活，先检查状态
+            do {
+                // 只在需要时才重新激活
+                try audioSession.setActive(true)
+                print("✅ [AudioSessionManager] Audio session activated successfully")
+            } catch {
+                print("❌ [AudioSessionManager] Failed to activate audio session: \(error.localizedDescription)")
+                throw error
             }
-            
-            if !routingSuccess {
-                print("🎧 [AudioSessionManager] ⚠️ Failed to route to Bluetooth after \(maxRetries) attempts - iOS 17+ AirPods Pro 2 issue detected")
-                // Log device info for debugging
-                let route = audioSession.currentRoute
-                print("🎧 [AudioSessionManager] Final route - Inputs: \(route.inputs.map { $0.portName }), Outputs: \(route.outputs.map { $0.portName })")
-            }
-            
         } else {
-            print("📱 [AudioSessionManager] Forcing audio routing to speaker")
-            try audioSession.overrideOutputAudioPort(.speaker)
+            print("✅ [AudioSessionManager] Audio session already active")
         }
     }
+    
+    
+    
+    
+    // forceAudioRouting方法已移除 - 系统会自动处理音频路由
     
     func preWarmRecording(to url: URL) async throws {
         print("⏰ [AudioSessionManager] 🔥 Pre-warming recording (optimized)")
         let warmupStartTime = Date()
         
-        // Ensure audio session is properly configured
-        let sessionSetupStartTime = Date()
-        try await setupForPlayAndRecord()
-        let sessionSetupDuration = Date().timeIntervalSince(sessionSetupStartTime) * 1000
-        print("⏰ [AudioSessionManager] 🔊 Audio session setup in \(String(format: "%.0fms", sessionSetupDuration))")
+        // Verify current audio session compatibility with recording
+        let currentCategory = audioSession.category
+        if currentCategory != .playAndRecord && currentCategory != .record {
+            print("⏰ [AudioSessionManager] ⚠️ Current session (\(currentCategory)) may not support recording warmup")
+            print("⏰ [AudioSessionManager] 📝 Warmup will proceed but may have limited effectiveness")
+        }
         
         // Optimized warmup: skip actual file recording, just prepare the audio system
+        // Note: No audio session change needed during warmup - keep current session
         let systemWarmupStartTime = Date()
         
         // Create minimal warmup without file I/O
+        // Use hardware-compatible sample rate
+        let audioSession = AVAudioSession.sharedInstance()
+        let hardwareSampleRate = audioSession.sampleRate
+        
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: 44100,
+            AVSampleRateKey: hardwareSampleRate, // Use hardware sample rate
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
+        
+        print("🎙️ [AudioSessionManager] Using hardware sample rate: \(hardwareSampleRate) Hz")
         
         do {
             // Use in-memory URL for super-fast warmup
@@ -587,18 +561,32 @@ class AudioSessionManager {
         print("⏰ [AudioSessionManager] ✅ Complete recording pre-warmup in \(String(format: "%.0fms", totalWarmupDuration))")
     }
     
-    func resetAudioSession() async throws {
-        print("⏰ [AudioSessionManager] 🔄 Resetting audio session")
+    enum AudioMode {
+        case playback
+        case recording
+        case playAndRecord
+    }
+    
+    func resetAudioSession(to mode: AudioMode = .playback) async throws {
+        print("⏰ [AudioSessionManager] 🔄 Resetting audio session to \(mode)")
         
-        isConfiguredForPlayAndRecord = false
         recordingWarmupRecorder?.stop()
         recordingWarmupRecorder = nil
         
         try audioSession.setActive(false)
         try await Task.sleep(nanoseconds: 100_000_000) // 0.1 second delay
-        try await setupForPlayAndRecord()
         
-        print("⏰ [AudioSessionManager] ✅ Audio session reset completed")
+        // 重新设置为.playAndRecord（与初始化相同）
+        do {
+            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetoothA2DP, .defaultToSpeaker])
+            try audioSession.setActive(true)
+            print("✅ [AudioSessionManager] Audio session reset to .playAndRecord")
+        } catch {
+            print("❌ [AudioSessionManager] Failed to reset audio session: \(error.localizedDescription)")
+            throw error
+        }
+        
+        print("⏰ [AudioSessionManager] ✅ Audio session reset to \(mode) completed")
     }
     
     func deactivateSession() async throws {
