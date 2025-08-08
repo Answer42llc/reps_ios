@@ -56,6 +56,27 @@ struct Affirmation {
 
 ## Build Notes
 - Reminder to modify code and attempt build for iPhone100
+- Must use this device to build:             { platform:iOS Simulator, arch:arm64, id:2584B20C-69FC-4329-B5F3-C58C31B8B20F, OS:26.0, name:iPad (A16) }
 
 ## Development Workflow
 - Use 'Explore, plan, code, commit' workflow, you must ask permission before code and commit
+
+## Code Review Guidelines
+- During code review, always list specific:
+  - Code snippets
+  - Relevant files
+  - Exact line numbers
+  - Provide concrete code suggestions for improvements
+  - 在进行review时候，给出最终的review问题清单前，请对清单上的每个问题进行二次验证，确保问题是存在的。
+
+## Analysis and Problem-Solving Guidelines
+- Must use ultrathink when analyzing issues
+- Find definitive code paths that lead to issues, not potential paths
+- When unclear, thoroughly examine code and search documentation to verify
+- Always show relevant code when presenting analysis results
+
+## Language Processing Guidelines
+- If instructions are not in English, first translate to English before processing
+- Conduct entire thinking process in English
+- Ensure accurate and context-aware translation
+- Always maintain the original intent of the instruction

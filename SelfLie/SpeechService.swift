@@ -57,7 +57,7 @@ class SpeechService: NSObject {
         }
     }
     
-    func startRecognition(expectedText: String) throws {
+    func startRecognition(expectedText: String, localeIdentifier: String? = nil) throws {
         print("🎤 [SpeechService] Starting speech recognition")
         
         // Stop any existing recognition first
@@ -77,7 +77,7 @@ class SpeechService: NSObject {
         print("📊 [SpeechService] Expected units: \(UniversalTextProcessor.extractTexts(from: expectedTextUnits))")
         
         // Set up recognizer for the expected text language
-        setupRecognizerForText(expectedText)
+        setupRecognizerForText(expectedText, localeIdentifier: localeIdentifier)
         
         guard let speechRecognizer = speechRecognizer else {
             print("❌ [SpeechService] No speech recognizer available")
@@ -140,11 +140,16 @@ class SpeechService: NSObject {
             }
         }
         
-        // Configure audio engine
+        // Configure audio engine with proper format handling
         let inputNode = audioEngine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
         
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+        // Get the hardware input format
+        let inputFormat = inputNode.inputFormat(forBus: 0)
+        print("🎙️ [SpeechService] Input hardware format: \(inputFormat)")
+        
+        // Use the hardware input format for the tap to avoid format mismatch
+        // This ensures we use the actual hardware sample rate (24kHz in this case)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
             recognitionRequest.append(buffer)
             
             // Calculate and monitor audio level
@@ -162,12 +167,19 @@ class SpeechService: NSObject {
             resetSilenceDetection()
         } catch {
             print("❌ [SpeechService] Failed to start audio engine: \(error.localizedDescription)")
+            print("🎙️ [SpeechService] Hardware format info:")
+            let inputNode = audioEngine.inputNode
+            let inputFormat = inputNode.inputFormat(forBus: 0)
+            let outputFormat = inputNode.outputFormat(forBus: 0)
+            print("   Input format: \(inputFormat)")
+            print("   Output format: \(outputFormat)")
             
             // Clean up on failure
             recognitionTask?.cancel()
             recognitionTask = nil
             self.recognitionRequest?.endAudio()
             self.recognitionRequest = nil
+            audioEngine.inputNode.removeTap(onBus: 0)
             
             throw SpeechServiceError.recognitionFailed
         }
@@ -278,7 +290,7 @@ class SpeechService: NSObject {
         print("🎵 Audio file: \(url.lastPathComponent)")
         
         // Set up recognizer for the expected text language
-        setupRecognizerForText(expectedText)
+        setupRecognizerForText(expectedText, localeIdentifier: nil)
         
         // Get the final recognizer (either from setup or emergency fallback)
         let finalSpeechRecognizer: SFSpeechRecognizer
@@ -428,16 +440,23 @@ class SpeechService: NSObject {
         }
     }
     
-    private func setupRecognizerForText(_ text: String) {
-        print("🔍 Detecting language for text: '\(text)'")
+    private func setupRecognizerForText(_ text: String, localeIdentifier: String? = nil) {
+        let finalLocaleIdentifier: String
         
-        // Use unified language detection
-        let detectionResult = LanguageDetector.detectLanguage(from: text)
-        let localeIdentifier = detectionResult.localeIdentifier
+        if let cachedLocaleId = localeIdentifier {
+            // Use provided cached language detection result
+            finalLocaleIdentifier = cachedLocaleId
+            print("🔍 Using cached language detection for text: '\(text)' -> \(cachedLocaleId)")
+        } else {
+            // Fallback to detecting language (for backward compatibility)
+            print("🔍 Detecting language for text: '\(text)'")
+            let detectionResult = LanguageDetector.detectLanguage(from: text)
+            finalLocaleIdentifier = detectionResult.localeIdentifier
+            print("🌍 Detected language: \(detectionResult.description)")
+        }
         
-        print("🌍 Detected language: \(detectionResult.description)")
+        let localeIdentifier = finalLocaleIdentifier
         print("📍 Using locale: \(localeIdentifier)")
-        print("🎯 Confidence: \(detectionResult.isHighConfidence ? "High" : "Low")")
         
         let preferredLocale = Locale(identifier: localeIdentifier)
         
@@ -634,7 +653,7 @@ extension SpeechService {
         }
         
         // Set up recognizer for the expected text language
-        setupRecognizerForText(expectedText)
+        setupRecognizerForText(expectedText, localeIdentifier: nil)
         
         guard let speechRecognizer = speechRecognizer, speechRecognizer.isAvailable else {
             print("❌ Speech recognizer not available")
