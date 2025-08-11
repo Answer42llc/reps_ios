@@ -863,35 +863,7 @@ class AudioSessionManager {
             }
         }
     }
-    
-    func resetAudioSession(to mode: AudioMode = .playback) async throws {
-        print("⏰ [AudioSessionManager] 🔄 Resetting audio session to \(mode)")
-        
-        recordingWarmupRecorder?.stop()
-        recordingWarmupRecorder = nil
-        
-        try audioSession.setActive(false)
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 second delay
-        
-        // 重新设置为.playAndRecord（使用当前路由的正确选项）
-        // Ensure audio session operations are performed on main thread (Apple best practice)
-        try await MainActor.run {
-            // playAndRecord 场景使用固定的正确选项组合
-            let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
-            
-            try audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
-            try audioSession.setActive(true)
-            
-            // Query hardware properties after reset (Apple best practice)
-            let sampleRate = audioSession.sampleRate
-            let bufferDuration = audioSession.ioBufferDuration
-            
-            print("✅ [AudioSessionManager] Audio session reset to .playAndRecord with .defaultToSpeaker and .allowBluetooth")
-            print("🎛️ [AudioSessionManager] Hardware properties after reset: \(sampleRate)Hz, \(bufferDuration)s buffer")
-        }
-        
-        print("⏰ [AudioSessionManager] ✅ Audio session reset to \(mode) completed")
-    }
+
     
     func deactivateSession() async throws {
         print("⏰ [AudioSessionManager] 🔄 Deactivating audio session and notifying other apps")
