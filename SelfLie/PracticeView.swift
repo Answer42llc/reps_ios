@@ -544,9 +544,9 @@ struct PracticeView: View {
                 let speechDuration = Date().timeIntervalSince(speechStartTime) * 1000
                 print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ PRECISE: Speech recognition failed in \(String(format: "%.0fms", speechDuration)), attempting retry with audio session reset...")
                 
-                // Try resetting audio session for Code 1101 recovery
+                // Try ensuring audio session is active for Code 1101 recovery (without deactivation)
                 do {
-                    try await AudioSessionManager.shared.resetAudioSession()
+                    try await AudioSessionManager.shared.ensureSessionActive()
                     let retryStartTime = Date()
                     try speechService.startRecognition(expectedText: affirmation.text, localeIdentifier: cachedLanguageResult)
                     let retryDuration = Date().timeIntervalSince(retryStartTime) * 1000
@@ -762,7 +762,17 @@ struct PracticeView: View {
     
     private func restartPractice() async {
         print("🔄 [PracticeView] Restarting practice session")
-        cleanup()
+        // Use restart-specific cleanup that doesn't deactivate audio session
+        cleanupForRestart()
+        
+        // Safe audio session reconfiguration without deactivation
+        do {
+            try await AudioSessionManager.shared.reconfigureSessionSafely()
+            print("✅ [PracticeView] Audio session safely reconfigured for restart")
+        } catch {
+            print("⚠️ [PracticeView] Failed to safely reconfigure audio session: \(error.localizedDescription)")
+        }
+        
         await MainActor.run {
             similarity = 0.0
             silentRecordingDetected = false
@@ -793,8 +803,43 @@ struct PracticeView: View {
         }
     }
     
+    /// Cleanup for restart - does NOT deactivate audio session to prevent other apps from resuming
+    private func cleanupForRestart() {
+        print("🧹 [PracticeView] Cleaning up for restart (keeping audio session active)")
+        audioService.stopRecording()
+        audioService.stopPlayback()
+        audioService.cleanupPreparedRecording()
+        speechService.stopRecognition()
+        
+        // Clean up timer
+        maxRecordingTimer?.invalidate()
+        maxRecordingTimer = nil
+        
+        // Clean up temporary recording file
+        if verifyFileExists(at: practiceURL, context: "restart cleanup verification") {
+            do {
+                try FileManager.default.removeItem(at: practiceURL)
+                print("🗑️ [PracticeView] Cleaned up temporary recording file for restart: \(practiceURL.path)")
+            } catch {
+                print("⚠️ [PracticeView] Failed to clean up temp file for restart: \(error.localizedDescription)")
+            }
+        }
+        
+        // Clear all callbacks to prevent memory leaks
+        print("🧹 [PracticeView] Clearing service callbacks for restart")
+        audioService.onPlaybackProgress = nil
+        audioService.onPlaybackComplete = nil
+        speechService.onWordRecognized = nil
+        speechService.onAudioLevelUpdate = nil
+        speechService.onSilenceDetected = nil
+        
+        // Note: Audio session remains active - no deactivation during restart
+        print("✅ [PracticeView] Restart cleanup complete - audio session kept active")
+    }
+    
+    /// Full cleanup including audio session deactivation - only for view dismissal
     private func cleanup() {
-        print("🧹 [PracticeView] Cleaning up audio services and temp files")
+        print("🧹 [PracticeView] Full cleanup including audio session deactivation")
         audioService.stopRecording()
         audioService.stopPlayback()
         audioService.cleanupPreparedRecording()
@@ -866,32 +911,12 @@ struct PracticeView: View {
                 let timeOffset: TimeInterval = 0.05 // 50ms compensation
                 let adjustedTime = currentTime + timeOffset
                 
-                // 添加详细的播放时序匹配日志
-                print("🎵 [PracticeView] Audio playback progress: \(String(format: "%.3f", currentTime))s / \(String(format: "%.3f", duration))s (adjusted: \(String(format: "%.3f", adjustedTime))s)")
-                
-                // 显示当前时间点附近的词时序信息
-                if !self.wordTimings.isEmpty {
-                    let relevantTimings = self.wordTimings.enumerated().filter { index, timing in
-                        abs(timing.startTime - adjustedTime) <= 0.5 || abs(timing.endTime - adjustedTime) <= 0.5
-                    }
-                    if !relevantTimings.isEmpty {
-                        print("🎵   Nearby word timings:")
-                        for (index, timing) in relevantTimings {
-                            let status = (adjustedTime >= timing.startTime && adjustedTime < timing.endTime) ? "CURRENT" : "nearby"
-                            print("🎵     [\(index)] '\(timing.word)' \(String(format: "%.3f", timing.startTime))s-\(String(format: "%.3f", timing.endTime))s (\(status))")
-                        }
-                    }
-                }
+                // Note: Audio playback progress logging removed to reduce console noise
                 
                 // Update current word index based on playback progress
                 let newWordIndex = NativeTextHighlighter.getWordIndexForTime(adjustedTime, wordTimings: self.wordTimings)
                 
                 if newWordIndex != self.currentWordIndex {
-                    print("🎯 [PracticeView] Updating word index from \(self.currentWordIndex) to \(newWordIndex) at time \(String(format: "%.3f", adjustedTime))s")
-                    if newWordIndex >= 0 && newWordIndex < self.wordTimings.count {
-                        let currentTiming = self.wordTimings[newWordIndex]
-                        print("🎯   Current word: '\(currentTiming.word)' (\(String(format: "%.3f", currentTiming.startTime))s-\(String(format: "%.3f", currentTiming.endTime))s)")
-                    }
                     self.currentWordIndex = newWordIndex
                     
                     // Optimized highlighting: only highlight completed words
@@ -906,7 +931,6 @@ struct PracticeView: View {
             DispatchQueue.main.async {
                 // Direct highlighting: highlight all recognized characters immediately
                 self.highlightedWordIndices.formUnion(recognizedWordIndices)
-                print("🎯 [PracticeView] Direct highlight: highlighted \(recognizedWordIndices.count) characters \(recognizedWordIndices)")
                 
                 // Set current word index to the highest recognized word
                 if let maxIndex = recognizedWordIndices.max() {
@@ -922,7 +946,6 @@ struct PracticeView: View {
                 if !self.wordTimings.isEmpty {
                     self.highlightedWordIndices = Set(0..<self.wordTimings.count)
                     self.currentWordIndex = self.wordTimings.count - 1
-                    print("🎯 [PracticeView] Playback complete: highlighted all \(self.wordTimings.count) words")
                 }
             }
         }
@@ -933,10 +956,8 @@ struct PracticeView: View {
         if currentIndex >= 0 {
             // Highlight all words from 0 to currentIndex (inclusive)
             self.highlightedWordIndices = Set(0...currentIndex)
-            print("🎯 [PracticeView] Simple highlighting: words 0 to \(currentIndex)")
         } else {
             self.highlightedWordIndices.removeAll()
-            print("🎯 [PracticeView] No words highlighted (before first word)")
         }
     }
     

@@ -822,6 +822,48 @@ class AudioSessionManager {
         case playAndRecord
     }
     
+    /// Safe reconfiguration without deactivating the session - prevents audio switching to other apps
+    func reconfigureSessionSafely() async throws {
+        print("⏰ [AudioSessionManager] 🔄 Safely reconfiguring audio session (no deactivation)")
+        
+        recordingWarmupRecorder?.stop()
+        recordingWarmupRecorder = nil
+        
+        // Re-entry protection: prevent multiple concurrent reconfigurations
+        return await withCheckedContinuation { continuation in
+            reconfigurationQueue.async {
+                guard !self.isReconfiguring else {
+                    debugLog("⚠️ [AudioSessionManager] Safe reconfiguration already in progress, skipping")
+                    continuation.resume()
+                    return
+                }
+                
+                self.isReconfiguring = true
+                defer { self.isReconfiguring = false }
+                
+                do {
+                    // Reconfigure without deactivating - maintains audio control
+                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+                    
+                    try self.audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
+                    // Note: NOT calling setActive(false) - this prevents other apps from resuming
+                    
+                    // Query updated hardware properties
+                    let newSampleRate = self.audioSession.sampleRate
+                    let newIOBufferDuration = self.audioSession.ioBufferDuration
+                    
+                    print("✅ [AudioSessionManager] Audio session safely reconfigured")
+                    print("🎛️ [AudioSessionManager] Hardware properties: \(newSampleRate)Hz, \(newIOBufferDuration)s buffer")
+                    
+                } catch {
+                    print("❌ [AudioSessionManager] Failed to safely reconfigure audio session: \(error.localizedDescription)")
+                }
+                
+                continuation.resume()
+            }
+        }
+    }
+    
     func resetAudioSession(to mode: AudioMode = .playback) async throws {
         print("⏰ [AudioSessionManager] 🔄 Resetting audio session to \(mode)")
         

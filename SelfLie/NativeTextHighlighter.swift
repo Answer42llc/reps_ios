@@ -50,7 +50,6 @@ extension NativeTextHighlighter {
     /// Get word index for current playback time using precise WordTiming data
     static func getWordIndexForTime(_ time: TimeInterval, wordTimings: [WordTiming]) -> Int {
         guard !wordTimings.isEmpty else { 
-            print("🎯 [NativeTextHighlighter] getWordIndexForTime: No word timings available")
             return -1 
         }
         
@@ -58,26 +57,22 @@ extension NativeTextHighlighter {
         for (index, wordTiming) in wordTimings.enumerated() {
             // Check if current time is within this word's time range
             if time >= wordTiming.startTime && time < wordTiming.endTime {
-                print("🎯 [NativeTextHighlighter] Time \(String(format: "%.2f", time))s -> word index \(index) ('\(wordTiming.word)')")
                 return index
             }
             // If time is before this word starts
             else if time < wordTiming.startTime {
                 // If this is the first word and time is before it starts, no highlighting
                 if index == 0 {
-                    print("🎯 [NativeTextHighlighter] Time \(String(format: "%.2f", time))s -> no highlighting (before first word)")
                     return -1
                 }
                 // Otherwise, highlight the previous word
                 let result = index - 1
-                print("🎯 [NativeTextHighlighter] Time \(String(format: "%.2f", time))s -> word index \(result) (before '\(wordTiming.word)')")
                 return result
             }
         }
         
         // If time is after all words, highlight the last word
         let result = wordTimings.count - 1
-        print("🎯 [NativeTextHighlighter] Time \(String(format: "%.2f", time))s -> final word index \(result)")
         return result
     }
 }
