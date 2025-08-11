@@ -288,7 +288,7 @@ class SpeechService: NSObject {
             
             // Look for a match within a reasonable range (allowing for small gaps)
             var found = false
-            let maxSearchRange = min(3, expectedUnits.count - expectedIndex) // Search up to 3 positions ahead
+            let maxSearchRange = min(10, expectedUnits.count - expectedIndex) // Search up to 10 positions ahead
             
             for offset in 0..<maxSearchRange {
                 let checkIndex = expectedIndex + offset
@@ -308,12 +308,8 @@ class SpeechService: NSObject {
                             print("🔤 [SpeechService] Marking skipped punctuation at [\(skipIndex)]: '\(expectedUnits[skipIndex].text)'")
                             matchedIndices.insert(skipIndex)
                         } else {
-                            // If we're skipping non-punctuation, limit the range
-                            if offset > 1 {
-                                print("🔍 [SpeechService] Skipping non-punctuation at [\(skipIndex)]: '\(expectedUnits[skipIndex].text)' (offset too large)")
-                                break
-                            }
-                            print("🔤 [SpeechService] Allowing small skip of non-punctuation at [\(skipIndex)]: '\(expectedUnits[skipIndex].text)'")
+                            // Allow skipping non-punctuation words to improve fault tolerance
+                            print("🔤 [SpeechService] Skipping non-punctuation at [\(skipIndex)]: '\(expectedUnits[skipIndex].text)' (offset: \(offset))")
                             // Don't mark non-punctuation as matched if we're skipping it
                         }
                     }
