@@ -1,23 +1,20 @@
 import SwiftUI
 import AVFoundation
 
-enum OnboardingRecordingState {
-    case initial
-    case recording
-    case analyzing
-    case success
-    case failure
-}
-
 struct SpeakAndRecordView: View {
     @Bindable var onboardingData: OnboardingData
     
-    @State private var recordingState: OnboardingRecordingState = .initial
+    @State private var recordingState: RecordingState = .idle
     @State private var audioService = AudioService()
     @State private var speechService = SpeechService()
     @State private var showingError = false
     @State private var errorMessage = ""
     @State private var similarity: Float = 0.0
+    
+    // Smart recording stop states (same as PracticeView)
+    @State private var hasGoodSimilarity = false
+    @State private var capturedRecognitionText: String = ""
+    @State private var maxRecordingTimer: Timer?
     
     // Word highlighting states (reused from PracticeView)
     @State internal var highlightedWordIndices: Set<Int> = []
@@ -31,62 +28,51 @@ struct SpeakAndRecordView: View {
     }()
     
     var body: some View {
-        VStack(spacing: 20) {
-            // Progress indicator
-            OnboardingProgressBar(progress: onboardingData.progress)
-                .padding(.top, 20)
+        ZStack {
+            // Background color
+            Color(hex: "#f9f9f9")
+                .ignoresSafeArea()
             
-            Spacer()
-            
-            // Title based on state
-            Text(titleForState)
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-            
-            if recordingState == .initial {
-                // Description for initial state
-                Text("Giving your goals a clear reason can helps you achieve them, as our brains are always looking for reasons.")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-            }
-            
-            Spacer()
-            
-            // Affirmation text with highlighting
-            VStack {
-                if recordingState == .recording || recordingState == .analyzing {
-                    // Show "Speak now" hint
-                    Text("Speak now")
+            VStack(spacing: 0) {
+                // Fixed height title and description area
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(titleForState)
+                        .font(.largeTitle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true) // Allow text to wrap
+                        .frame(minHeight: 88, maxHeight: 88, alignment: .top) // Fixed space for up to 3 lines
+                    
+                    Text("Giving your goals a clear reason can helps you achieve them, as our brains are always looking for reasons.")
                         .font(.body)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(Color.purple)
-                        .cornerRadius(20)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true) // Allow text to wrap
+                        .opacity(recordingState == .idle ? 1 : 0) // Use opacity instead of conditional rendering
+                        .frame(minHeight: 66, maxHeight: 66) // Fixed space for description
                 }
+                .padding(.horizontal, 16)
                 
-                // Affirmation text with word highlighting
-                HighlightedAffirmationText(
-                    text: onboardingData.affirmationText,
-                    highlightedWordIndices: highlightedWordIndices
-                )
-                .font(.title2)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
+                // Card view with fixed position
+                cardView
+                    .padding(.top, 40)
+                
+                Spacer()
+                
+                // Bottom action area
+                actionButtonForState
+                    .padding(.bottom, 40)
             }
+            .padding(.top, 80)
             
-            Spacer()
-            
-            // Action button based on state
-            actionButtonForState
-            
-            Spacer()
+            VStack{
+                // Progress indicator
+                OnboardingProgressBar(progress: onboardingData.progress)
+                    .padding(.top, 20)
+                    .padding(.bottom, 30)
+                Spacer()
+            }
+
         }
-        .background(Color(hex: "#f9f9f9"))
         .fontDesign(.serif)
         .alert("Error", isPresented: $showingError) {
             Button("OK") { }
@@ -96,67 +82,101 @@ struct SpeakAndRecordView: View {
         .onAppear {
             setupSpeechService()
         }
+        .onChange(of: speechService.recognizedText) { _, newText in
+            // Monitor for smart recording stop (same as PracticeView)
+            if recordingState == .recording && !newText.isEmpty {
+                // Capture recognized text for later analysis
+                capturedRecognitionText = newText
+                print("📝 [SpeakAndRecordView] Captured recognition text: '\(newText)'")
+                
+                let currentSimilarity = speechService.calculateSimilarity(
+                    expected: onboardingData.affirmationText,
+                    recognized: newText
+                )
+                
+                // Use 70% threshold for onboarding (vs 80% in practice)
+                if currentSimilarity >= 0.7 && !hasGoodSimilarity {
+                    hasGoodSimilarity = true
+                    print("🎯 [SpeakAndRecordView] Good similarity achieved: \(currentSimilarity)")
+                    monitorSilenceForSmartStop()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Card View (using common component from PracticeView)
+    private var cardView: some View {
+        PracticeCardView(
+            statusContent: {
+                statusArea
+            },
+            mainContent: {
+                // Affirmation text
+                HighlightedAffirmationText(
+                    text: onboardingData.affirmationText,
+                    highlightedWordIndices: highlightedWordIndices
+                )
+                .font(.title2)
+                .multilineTextAlignment(.center)
+            },
+            actionContent: {
+                PracticeCardActionButton(
+                    title: "Retry",
+                    systemImage: "gobackward",
+                    action: toggleRecording
+                )
+            },
+            showActionArea: recordingState == .completed && similarity < 0.7
+        )
+    }
+    
+    @ViewBuilder
+    private var statusArea: some View {
+        if recordingState == .recording || recordingState == .analyzing {
+            // Recording/analyzing state
+            PracticeStatusPill(text: recordingState == .recording ? "Speak now" : "Analyzing...")
+        } else if recordingState == .completed && similarity >= 0.7 {
+            // Success state shows checkmark (like PracticeView)
+            PracticeSuccessStatus()
+        } else if recordingState == .completed && similarity < 0.7 {
+            // Failure state shows Try Again (like PracticeView)
+            PracticeFailureStatus()
+        }
     }
     
     private var titleForState: String {
         switch recordingState {
-        case .initial:
+        case .idle:
             return "Great! Now say it aloud and record yourself 👍"
         case .recording:
             return "Recording..."
         case .analyzing:
             return "Analyzing..."
-        case .success:
-            return "👏 Well done! Let's listen and repeat it to motivate yourself."
-        case .failure:
-            return "Please try again, speaking louder and more clearly."
+        case .completed:
+            if similarity >= 0.7 {
+                return "👏 Well done! Let's listen and repeat it to motivate yourself."
+            } else {
+                return "Please try again, speaking louder and more clearly."
+            }
         }
     }
     
     @ViewBuilder
     private var actionButtonForState: some View {
         switch recordingState {
-        case .initial:
-            Button(action: startRecording) {
-                VStack(spacing: 8) {
-                    Image(systemName: "mic.circle.fill")
-                        .font(.system(size: 80))
-                        .foregroundColor(.purple)
-                    
-                    Text("Tap to record")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                }
+        case .idle:
+            VStack(spacing: 40) {
+                RecordingButton(isRecording: false, action: toggleRecording)
             }
-            .buttonStyle(PlainButtonStyle())
             
         case .recording:
-            Button(action: stopRecording) {
-                VStack(spacing: 8) {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 80))
-                        .foregroundColor(.purple)
-                    
-                    Text("Tap to stop record")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
+            RecordingButton(isRecording: true, action: toggleRecording)
             
         case .analyzing:
-            VStack(spacing: 8) {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .purple))
-                    .scaleEffect(2.0)
-            }
+            LoadingIndicator()
             
-        case .success:
-            VStack(spacing: 20) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 60))
-                    .foregroundColor(.purple)
-                
+        case .completed:
+            if similarity >= 0.7 {
                 OnboardingContinueButton(
                     title: "Continue",
                     isEnabled: true
@@ -166,25 +186,40 @@ struct SpeakAndRecordView: View {
                     onboardingData.nextStep()
                 }
                 .padding(.horizontal, 20)
-            }
-            
-        case .failure:
-            VStack(spacing: 20) {
-                Text("✕ Try again")
-                    .font(.body)
-                    .foregroundColor(.gray)
-                
-                Button(action: retryRecording) {
-                    Image(systemName: "arrow.clockwise.circle.fill")
-                        .font(.system(size: 60))
-                        .foregroundColor(.purple)
-                }
-                .buttonStyle(PlainButtonStyle())
+            } else {
+                // Empty - retry button is in cardActionArea inside the card
+                EmptyView()
             }
         }
     }
     
     // MARK: - Recording Logic (reused from PracticeView)
+    
+    private func toggleRecording() {
+        switch recordingState {
+        case .idle:
+            startRecording()
+        case .recording:
+            stopRecording()
+        case .analyzing:
+            break // Can't interrupt analysis
+        case .completed:
+            // Allow retry if similarity was too low
+            if similarity < 0.7 {
+                // Reset for retry
+                similarity = 0.0
+                capturedRecognitionText = ""
+                highlightedWordIndices.removeAll()
+                hasGoodSimilarity = false
+                // Generate new URL for retry
+                onboardingRecordingURL = {
+                    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    return documentsPath.appendingPathComponent("onboarding_\(UUID().uuidString).m4a")
+                }()
+                startRecording()
+            }
+        }
+    }
     
     private func setupSpeechService() {
         speechService.onWordRecognized = { [self] recognizedText, wordIndices in
@@ -197,7 +232,7 @@ struct SpeakAndRecordView: View {
     private func startRecording() {
         Task {
             // Check permissions in sequence
-            let micGranted = await PermissionManager.requestMicrophonePermission()
+            let micGranted = await audioService.requestMicrophonePermission()
             guard micGranted else {
                 await MainActor.run {
                     errorMessage = "Microphone permission is required to record your affirmation."
@@ -206,7 +241,7 @@ struct SpeakAndRecordView: View {
                 return
             }
             
-            let speechGranted = await PermissionManager.requestSpeechRecognitionPermission()
+            let speechGranted = await speechService.requestSpeechRecognitionPermission()
             guard speechGranted else {
                 await MainActor.run {
                     errorMessage = "Speech recognition permission is required to verify your recording."
@@ -219,6 +254,8 @@ struct SpeakAndRecordView: View {
             await MainActor.run {
                 recordingState = .recording
                 highlightedWordIndices.removeAll()
+                hasGoodSimilarity = false
+                capturedRecognitionText = ""
             }
             
             // Start recording in background
@@ -227,11 +264,19 @@ struct SpeakAndRecordView: View {
                 
                 // Start speech recognition
                 try speechService.startRecognition(expectedText: onboardingData.affirmationText)
+                
+                // Set up maximum recording timer (10 seconds) - same as PracticeView
+                await MainActor.run {
+                    maxRecordingTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { _ in
+                        print("⏰ [SpeakAndRecordView] Maximum recording time reached - stopping recording")
+                        self.stopRecording()
+                    }
+                }
             } catch {
                 await MainActor.run {
                     errorMessage = "Failed to start recording: \(error.localizedDescription)"
                     showingError = true
-                    recordingState = .initial
+                    recordingState = .idle
                 }
             }
         }
@@ -240,93 +285,76 @@ struct SpeakAndRecordView: View {
     private func stopRecording() {
         recordingState = .analyzing
         
+        // Cancel max recording timer
+        maxRecordingTimer?.invalidate()
+        maxRecordingTimer = nil
+        
+        // Stop both audio recording and speech recognition
         audioService.stopRecording()
         speechService.stopRecognition()
         
         // Analyze the recording
         Task {
-            await analyzeRecording()
-        }
-    }
-    
-    private func analyzeRecording() async {
-        // Simulate analysis time
-        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-        
-        await MainActor.run {
-            // Check if enough words were recognized (simple success criteria for now)
-            let recognizedWordCount = highlightedWordIndices.count
-            let totalWords = onboardingData.affirmationText.components(separatedBy: " ").count
-            let recognitionRatio = Float(recognizedWordCount) / Float(totalWords)
-            
-            if recognitionRatio >= 0.7 { // 70% threshold
-                recordingState = .success
+            // Use captured text for similarity check if available
+            let finalSimilarity: Float
+            if !capturedRecognitionText.isEmpty {
+                finalSimilarity = speechService.calculateSimilarity(
+                    expected: onboardingData.affirmationText,
+                    recognized: capturedRecognitionText
+                )
             } else {
-                recordingState = .failure
-                // Clean up failed recording
-                try? FileManager.default.removeItem(at: onboardingRecordingURL)
-                // Generate new URL for next attempt
-                onboardingRecordingURL = {
-                    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                    return documentsPath.appendingPathComponent("onboarding_\(UUID().uuidString).m4a")
-                }()
+                // Fallback to word count ratio
+                let recognizedWordCount = highlightedWordIndices.count
+                let totalWords = onboardingData.affirmationText.components(separatedBy: " ").count
+                finalSimilarity = Float(recognizedWordCount) / Float(totalWords)
             }
-        }
-    }
-    
-    private func retryRecording() {
-        recordingState = .recording
-        highlightedWordIndices.removeAll()
-        
-        // Start recording again
-        Task {
-            do {
-                try await audioService.startRecording(to: onboardingRecordingURL)
-                try speechService.startRecognition(expectedText: onboardingData.affirmationText)
-            } catch {
-                await MainActor.run {
-                    errorMessage = "Failed to retry recording: \(error.localizedDescription)"
-                    showingError = true
-                    recordingState = .failure
+            
+            print("📊 [SpeakAndRecordView] Final similarity: \(finalSimilarity)")
+            
+            await MainActor.run {
+                similarity = finalSimilarity
+                recordingState = .completed
+                
+                // Clean up failed recording if similarity is too low
+                if similarity < 0.7 {
+                    try? FileManager.default.removeItem(at: onboardingRecordingURL)
+                    // Generate new URL for next attempt
+                    onboardingRecordingURL = {
+                        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                        return documentsPath.appendingPathComponent("onboarding_\(UUID().uuidString).m4a")
+                    }()
+                } else {
+                    // Analyze audio to generate precise word timings when successful
+                    Task {
+                        do {
+                            let timings = try await speechService.analyzeAudioFile(
+                                at: onboardingRecordingURL,
+                                expectedText: onboardingData.affirmationText
+                            )
+                            await MainActor.run {
+                                onboardingData.wordTimings = timings
+                                print("✅ [SpeakAndRecordView] Generated \(timings.count) word timings for onboarding")
+                            }
+                        } catch {
+                            print("⚠️ [SpeakAndRecordView] Failed to generate word timings: \(error)")
+                            // Don't block the flow, continue with fallback timing
+                        }
+                    }
                 }
             }
         }
     }
-}
-
-// MARK: - Highlighted Affirmation Text Component
-struct HighlightedAffirmationText: View {
-    let text: String
-    let highlightedWordIndices: Set<Int>
     
-    var body: some View {
-        let words = text.components(separatedBy: " ")
-        
-        Text(buildAttributedString(words: words))
-    }
-    
-    private func buildAttributedString(words: [String]) -> AttributedString {
-        var result = AttributedString()
-        
-        for (index, word) in words.enumerated() {
-            var attributedWord = AttributedString(word)
-            
-            if highlightedWordIndices.contains(index) {
-                attributedWord.foregroundColor = .purple
-            } else {
-                attributedWord.foregroundColor = .primary
-            }
-            
-            result.append(attributedWord)
-            
-            // Add space between words (except for the last word)
-            if index < words.count - 1 {
-                result.append(AttributedString(" "))
+    private func monitorSilenceForSmartStop() {
+        // Set up silence detection callback for smart stop (same as PracticeView)
+        speechService.onSilenceDetected = { isSilent in
+            if isSilent && self.hasGoodSimilarity && self.recordingState == .recording {
+                print("🤫 [SpeakAndRecordView] Silence detected with good similarity - stopping recording")
+                self.stopRecording()
             }
         }
-        
-        return result
     }
+    
 }
 
 #Preview {
@@ -337,3 +365,4 @@ struct HighlightedAffirmationText: View {
     data.generateAffirmation()
     return SpeakAndRecordView(onboardingData: data)
 }
+

@@ -8,6 +8,7 @@ class OnboardingData {
     var affirmationText = ""
     var audioURL: URL?
     var practiceCount = 0
+    var wordTimings: [WordTiming] = []
     
     var progress: Double {
         Double(currentStep) / 5.0
@@ -40,5 +41,6 @@ class OnboardingData {
         affirmationText = ""
         audioURL = nil
         practiceCount = 0
+        wordTimings = []
     }
 }

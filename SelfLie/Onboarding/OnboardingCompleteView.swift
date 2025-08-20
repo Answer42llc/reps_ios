@@ -147,6 +147,12 @@ struct OnboardingCompleteView: View {
             newAffirmation.audioFileName = ""
         }
         
+        // Save word timings if available
+        if !onboardingData.wordTimings.isEmpty {
+            newAffirmation.wordTimings = onboardingData.wordTimings
+            print("✅ Saved \(onboardingData.wordTimings.count) word timings from onboarding")
+        }
+        
         // Save to Core Data
         try viewContext.save()
         print("✅ Onboarding affirmation saved successfully")
