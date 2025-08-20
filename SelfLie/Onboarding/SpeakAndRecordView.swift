@@ -144,7 +144,7 @@ struct SpeakAndRecordView: View {
         } else if recordingState == .completed && similarity >= 0.8 {
             // Success state shows checkmark (like PracticeView)
             PracticeSuccessStatus()
-        } else if recordingState == .completed && similarity < 0.7 {
+        } else if recordingState == .completed && similarity < 0.8 {
             // Failure state shows Try Again (like PracticeView)
             PracticeFailureStatus()
         }
@@ -163,7 +163,7 @@ struct SpeakAndRecordView: View {
                 return "Analyzing..."
             }
         case .completed:
-            if similarity >= 0.7 {
+            if similarity >= 0.8 {
                 return "👏 Well done! Let's listen and repeat it to motivate yourself."
             } else {
                 return "Please try again, speaking louder and more clearly."
@@ -186,7 +186,7 @@ struct SpeakAndRecordView: View {
             LoadingIndicator()
             
         case .completed:
-            if similarity >= 0.7 {
+            if similarity >= 0.8 {
                 OnboardingContinueButton(
                     title: "Continue",
                     isEnabled: true
@@ -215,7 +215,7 @@ struct SpeakAndRecordView: View {
             break // Can't interrupt analysis
         case .completed:
             // Allow retry if similarity was too low
-            if similarity < 0.7 {
+            if similarity < 0.8 {
                 // Reset for retry
                 similarity = 0.0
                 capturedRecognitionText = ""
@@ -326,7 +326,7 @@ struct SpeakAndRecordView: View {
             }
             
             // If successful, generate word timings while still in analyzing state
-            if finalSimilarity >= 0.7 {
+            if finalSimilarity >= 0.8 {
                 await MainActor.run {
                     isGeneratingTimings = true
                 }

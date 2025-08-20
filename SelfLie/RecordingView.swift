@@ -76,7 +76,7 @@ struct RecordingView: View {
                     recognized: newText
                 )
                 
-                if currentSimilarity >= 0.7 && !hasGoodSimilarity {
+                if currentSimilarity >= 0.8 && !hasGoodSimilarity {
                     hasGoodSimilarity = true
                     print("🎯 Good similarity achieved: \(currentSimilarity)")
                     monitorSilenceForSmartStop()
@@ -127,7 +127,7 @@ struct RecordingView: View {
                 .scaleEffect(recordingState == .recording ? 1.2 : 1.0)
                 .animation(.easeInOut(duration: 0.2), value: recordingState == .recording)
         }
-        .disabled(recordingState == .analyzing || (recordingState == .completed && similarity >= 0.7))
+        .disabled(recordingState == .analyzing || (recordingState == .completed && similarity >= 0.8))
         .sensoryFeedback(.impact, trigger: recordingState == .recording)
     }
     
@@ -136,7 +136,7 @@ struct RecordingView: View {
         case .idle: return .purple
         case .recording: return .red
         case .analyzing: return .gray
-        case .completed: return similarity >= 0.7 ? .green : .orange
+        case .completed: return similarity >= 0.8 ? .green : .orange
         }
     }
     
@@ -150,7 +150,7 @@ struct RecordingView: View {
             case .analyzing:
                 Text("Analyzing speech...")
             case .completed:
-                Text(similarity >= 0.7 ? "Great! Recording saved" : "Tap mic to try again")
+                Text(similarity >= 0.8 ? "Great! Recording saved" : "Tap mic to try again")
             }
         }
         .font(.headline)
@@ -162,9 +162,9 @@ struct RecordingView: View {
             Text("Accuracy: \(Int(similarity * 100))%")
                 .font(.title3)
                 .fontWeight(.semibold)
-                .foregroundColor(similarity >= 0.7 ? .green : .orange)
+                .foregroundColor(similarity >= 0.8 ? .green : .orange)
             
-            if similarity >= 0.7 {
+            if similarity >= 0.8 {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
@@ -179,7 +179,7 @@ struct RecordingView: View {
             }
         }
         .padding()
-        .background(similarity >= 0.7 ? Color.green.opacity(0.1) : Color.orange.opacity(0.1))
+        .background(similarity >= 0.8 ? Color.green.opacity(0.1) : Color.orange.opacity(0.1))
         .cornerRadius(8)
     }
     
@@ -215,9 +215,9 @@ struct RecordingView: View {
                     HStack {
                         Text("Accuracy: \(Int(currentSimilarity * 100))%")
                             .font(.caption)
-                            .foregroundColor(currentSimilarity >= 0.7 ? .green : .orange)
+                            .foregroundColor(currentSimilarity >= 0.8 ? .green : .orange)
                         Spacer()
-                        if currentSimilarity >= 0.7 {
+                        if currentSimilarity >= 0.8 {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.green)
                             if hasGoodSimilarity {
@@ -262,7 +262,7 @@ struct RecordingView: View {
             break // Can't interrupt analysis
         case .completed:
             // Allow retry if similarity was too low
-            if similarity < 0.7 {
+            if similarity < 0.8 {
                 // Reset for retry
                 recordingState = .idle
                 similarity = 0.0
@@ -338,7 +338,7 @@ struct RecordingView: View {
                 recordingState = .completed
                 
                 // Save if similarity meets threshold
-                if similarity >= 0.7 {
+                if similarity >= 0.8 {
                     saveAffirmation()
                 }
             }
@@ -442,7 +442,7 @@ struct RecordingView: View {
         maxRecordingTimer = nil
         
         // Clean up the recording file if it exists and wasn't saved
-        if recordingState != .completed || similarity < 0.7 {
+        if recordingState != .completed || similarity < 0.8 {
             try? FileManager.default.removeItem(at: recordingURL)
         }
     }
