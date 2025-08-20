@@ -16,6 +16,9 @@ struct SpeakAndRecordView: View {
     @State private var capturedRecognitionText: String = ""
     @State private var maxRecordingTimer: Timer?
     
+    // Word timing generation tracking
+    @State private var isGeneratingTimings = false
+    
     // Word highlighting states (reused from PracticeView)
     @State internal var highlightedWordIndices: Set<Int> = []
     @State internal var currentWordIndex: Int = -1
@@ -94,8 +97,8 @@ struct SpeakAndRecordView: View {
                     recognized: newText
                 )
                 
-                // Use 70% threshold for onboarding (vs 80% in practice)
-                if currentSimilarity >= 0.7 && !hasGoodSimilarity {
+                // Use 80% threshold for onboarding (same as practice)
+                if currentSimilarity >= 0.8 && !hasGoodSimilarity {
                     hasGoodSimilarity = true
                     print("🎯 [SpeakAndRecordView] Good similarity achieved: \(currentSimilarity)")
                     monitorSilenceForSmartStop()
@@ -126,16 +129,19 @@ struct SpeakAndRecordView: View {
                     action: toggleRecording
                 )
             },
-            showActionArea: recordingState == .completed && similarity < 0.7
+            showActionArea: recordingState == .completed && similarity < 0.8
         )
     }
     
     @ViewBuilder
     private var statusArea: some View {
-        if recordingState == .recording || recordingState == .analyzing {
-            // Recording/analyzing state
-            PracticeStatusPill(text: recordingState == .recording ? "Speak now" : "Analyzing...")
-        } else if recordingState == .completed && similarity >= 0.7 {
+        if recordingState == .recording {
+            // Recording state
+            PracticeStatusPill(text: "Speak now")
+        } else if recordingState == .analyzing {
+            // Analyzing state - show different text based on progress
+            PracticeStatusPill(text: isGeneratingTimings ? "Processing..." : "Analyzing...")
+        } else if recordingState == .completed && similarity >= 0.8 {
             // Success state shows checkmark (like PracticeView)
             PracticeSuccessStatus()
         } else if recordingState == .completed && similarity < 0.7 {
@@ -151,7 +157,11 @@ struct SpeakAndRecordView: View {
         case .recording:
             return "Recording..."
         case .analyzing:
-            return "Analyzing..."
+            if isGeneratingTimings {
+                return "Preparing for practice..."
+            } else {
+                return "Analyzing..."
+            }
         case .completed:
             if similarity >= 0.7 {
                 return "👏 Well done! Let's listen and repeat it to motivate yourself."
@@ -313,33 +323,50 @@ struct SpeakAndRecordView: View {
             
             await MainActor.run {
                 similarity = finalSimilarity
-                recordingState = .completed
+            }
+            
+            // If successful, generate word timings while still in analyzing state
+            if finalSimilarity >= 0.7 {
+                await MainActor.run {
+                    isGeneratingTimings = true
+                }
                 
-                // Clean up failed recording if similarity is too low
-                if similarity < 0.7 {
+                do {
+                    print("🎯 [SpeakAndRecordView] Generating word timings...")
+                    let timings = try await speechService.analyzeAudioFile(
+                        at: onboardingRecordingURL,
+                        expectedText: onboardingData.affirmationText
+                    )
+                    
+                    await MainActor.run {
+                        onboardingData.wordTimings = timings
+                        print("✅ [SpeakAndRecordView] Generated \(timings.count) word timings")
+                        
+                        // Now all analysis is complete, switch to completed state
+                        recordingState = .completed
+                        isGeneratingTimings = false
+                    }
+                } catch {
+                    print("⚠️ [SpeakAndRecordView] Failed to generate word timings: \(error)")
+                    
+                    await MainActor.run {
+                        // Even if timing generation fails, allow user to continue
+                        recordingState = .completed
+                        isGeneratingTimings = false
+                    }
+                }
+            } else {
+                // Failed similarity check - go directly to completed state
+                await MainActor.run {
+                    recordingState = .completed
+                    
+                    // Clean up failed recording
                     try? FileManager.default.removeItem(at: onboardingRecordingURL)
                     // Generate new URL for next attempt
                     onboardingRecordingURL = {
                         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                         return documentsPath.appendingPathComponent("onboarding_\(UUID().uuidString).m4a")
                     }()
-                } else {
-                    // Analyze audio to generate precise word timings when successful
-                    Task {
-                        do {
-                            let timings = try await speechService.analyzeAudioFile(
-                                at: onboardingRecordingURL,
-                                expectedText: onboardingData.affirmationText
-                            )
-                            await MainActor.run {
-                                onboardingData.wordTimings = timings
-                                print("✅ [SpeakAndRecordView] Generated \(timings.count) word timings for onboarding")
-                            }
-                        } catch {
-                            print("⚠️ [SpeakAndRecordView] Failed to generate word timings: \(error)")
-                            // Don't block the flow, continue with fallback timing
-                        }
-                    }
                 }
             }
         }

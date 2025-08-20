@@ -91,3 +91,4 @@ struct Affirmation {
 ## Design Philosophy
 - 更多使用系统的能力而非自己手动实现，更多让系统默认控制而非自己实现控制，因为iOS默认的情况一般是最符合用户直觉的。
 - 计划中应该包含具体要改的代码，以及如何改，修改前后的代码都要列出来
+- 'allowBluetooth' was deprecated in iOS 8.0: renamed to 'AVAudioSession.CategoryOptions.allowBluetoothHFP'
