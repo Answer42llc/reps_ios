@@ -1,0 +1,32 @@
+{
+  "source": "/Users/lw/Projects/SelfLie/SelfLie/Onboarding/GiveReasonView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Give it a reason",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 31
+        }
+      },
+      {
+        "comment": "",
+        "key": "Giving your goals a clear reason can helps you achieve them, as our brains are always looking for reasons.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 35
+        }
+      },
+      {
+        "comment": "",
+        "key": "Select blow or type your own",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 45
+        }
+      }
+    ]
+  },
+  "version": 1
+}

@@ -1,0 +1,48 @@
+{
+  "source": "/Users/lw/Projects/SelfLie/SelfLie/DashboardView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "My Reps",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 52
+        }
+      },
+      {
+        "comment": "",
+        "key": "No affirmations yet",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 78
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tap 'Add' to create your first affirmation",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "🔥",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 126
+        }
+      },
+      {
+        "comment": "",
+        "key": "%d/1000",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 127
+        }
+      }
+    ]
+  },
+  "version": 1
+}

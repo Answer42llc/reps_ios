@@ -1,0 +1,16 @@
+{
+  "source": "/Users/lw/Projects/SelfLie/SelfLie/ContentView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Reset Onboarding",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 46
+        }
+      }
+    ]
+  },
+  "version": 1
+}

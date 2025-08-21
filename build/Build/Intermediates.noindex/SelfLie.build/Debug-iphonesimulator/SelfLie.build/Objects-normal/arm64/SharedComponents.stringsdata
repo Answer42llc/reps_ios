@@ -1,0 +1,40 @@
+{
+  "source": "/Users/lw/Projects/SelfLie/SelfLie/SharedComponents.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Tap to stop",
+        "location": {
+          "startingColumn": 36,
+          "startingLine": 77
+        }
+      },
+      {
+        "comment": "",
+        "key": "Tap to record",
+        "location": {
+          "startingColumn": 52,
+          "startingLine": 77
+        }
+      },
+      {
+        "comment": "",
+        "key": "✕ Try again",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 136
+        }
+      },
+      {
+        "comment": "",
+        "key": "Try Again",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 218
+        }
+      }
+    ]
+  },
+  "version": 1
+}

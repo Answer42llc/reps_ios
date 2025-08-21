@@ -12,7 +12,7 @@ enum OnboardingPracticeState {
 struct FirstPracticeView: View {
     @Bindable var onboardingData: OnboardingData
     
-    @State private var practiceState: OnboardingPracticeState = .playback
+    @State private var practiceState: OnboardingPracticeState = .success
     @State private var audioService = AudioService()
     @State private var speechService = SpeechService()
     @State private var showingError = false

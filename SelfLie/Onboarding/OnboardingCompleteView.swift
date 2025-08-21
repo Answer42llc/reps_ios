@@ -11,51 +11,62 @@ struct OnboardingCompleteView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
-    @State private var completeState: OnboardingCompleteState = .philosophy
+    @State private var completeState: OnboardingCompleteState = .ready
     @State private var showingError = false
     @State private var errorMessage = ""
     
     var body: some View {
-        VStack(spacing: 20) {
-            // Progress indicator - always 100%
-            OnboardingProgressBar(progress: 1.0)
-                .padding(.top, 20)
+        ZStack {
+            // Background color
+            Color(hex: "#f9f9f9")
+                .ignoresSafeArea()
             
-            Spacer()
-            
-            // Title based on state
-            Text(titleForState)
-                .font(.title)
-                .fontWeight(.medium)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 30)
-            
-            Spacer()
-            
-            // Fire emoji with +1
-            HStack(spacing: 8) {
-                Text("🔥")
-                    .font(.system(size: 50))
+            VStack(spacing: 0) {
+                // Fixed height title area (matching FirstPracticeView)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(titleForState)
+                        .font(.largeTitle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 88, maxHeight: 88, alignment: .top)
+                }
+                .padding(.horizontal, 16)
                 
-                Text("+1")
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundColor(.black)
+                // Fire emoji with +1 - centered with proper spacing
+                HStack(spacing: 12) {
+                    Text("🔥")
+                        .font(.system(size: 64))
+                    
+                    Text("+1")
+                        .font(.system(size: 64))
+                        .fontWeight(.bold)
+                        .italic()
+                        .foregroundColor(.black)
+                }
+                .padding(.top, 96)
+                
+                Spacer()
+                
+                // Action button
+                OnboardingContinueButton(
+                    title: buttonTitleForState,
+                    isEnabled: true
+                ) {
+                    handleButtonTap()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 40)
             }
+            .padding(.top, 80)
             
-            Spacer()
-            
-            // Action button
-            OnboardingContinueButton(
-                title: buttonTitleForState,
-                isEnabled: true
-            ) {
-                handleButtonTap()
+            // Progress bar at top
+            VStack {
+                OnboardingProgressBar(progress: 1.0)
+                    .padding(.top, 20)
+                    .padding(.bottom, 30)
+                Spacer()
             }
-            .padding(.horizontal, 30)
-            
-            Spacer()
         }
-        .background(Color(hex: "#f9f9f9"))
         .fontDesign(.serif)
         .alert("Error", isPresented: $showingError) {
             Button("OK") { }
@@ -67,9 +78,9 @@ struct OnboardingCompleteView: View {
     private var titleForState: String {
         switch completeState {
         case .philosophy:
-            return "Even a lie repeated a thousand times becomes the truth."
+            return "Next, all you need is to motivate yourself 1000 times."
         case .ready:
-            return "All you need is motivate yourself 1000 times until your goal become true. I'll remind you."
+            return "By repeat 1000 times, even a lie can become a truth. I'll remind you."
         }
     }
     

@@ -1,0 +1,32 @@
+{
+  "source": "/Users/lw/Projects/SelfLie/SelfLie/Onboarding/SpeakAndRecordView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Error",
+        "location": {
+          "startingColumn": 16,
+          "startingLine": 80
+        }
+      },
+      {
+        "comment": "",
+        "key": "Giving your goals a clear reason can helps you achieve them, as our brains are always looking for reasons.",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 48
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 81
+        }
+      }
+    ]
+  },
+  "version": 1
+}
