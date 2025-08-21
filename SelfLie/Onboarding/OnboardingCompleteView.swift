@@ -11,7 +11,7 @@ struct OnboardingCompleteView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
-    @State private var completeState: OnboardingCompleteState = .ready
+    @State private var completeState: OnboardingCompleteState = .philosophy
     @State private var showingError = false
     @State private var errorMessage = ""
     

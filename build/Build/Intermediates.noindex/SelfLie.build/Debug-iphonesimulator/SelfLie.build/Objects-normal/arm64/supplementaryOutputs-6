@@ -1,24 +1,18 @@
-"/Users/lw/Projects/SelfLie/SelfLie/RecordingView.swift":
-  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/RecordingView.d"
-  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/RecordingView.o"
-  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/RecordingView.swiftdeps"
-  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/RecordingView.swiftconstvalues"
-  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/RecordingView.dia"
-"/Users/lw/Projects/SelfLie/SelfLie/Onboarding/FirstPracticeView.swift":
-  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.swiftdeps"
-  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.d"
-  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.o"
-  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.dia"
-  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.swiftconstvalues"
-"/Users/lw/Projects/SelfLie/SelfLie/ContentView.swift":
-  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.o"
-  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.swiftconstvalues"
-  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.d"
-  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.swiftdeps"
-  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.dia"
-"/Users/lw/Projects/SelfLie/SelfLie/Services/EmbeddingSimilarity.swift":
-  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/EmbeddingSimilarity.d"
-  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/EmbeddingSimilarity.dia"
-  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/EmbeddingSimilarity.swiftconstvalues"
-  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/EmbeddingSimilarity.o"
-  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/EmbeddingSimilarity.swiftdeps"
+"/Users/lw/Projects/SelfLie/SelfLie/Services/SpeechService.swift":
+  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeechService.swiftconstvalues"
+  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeechService.d"
+  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeechService.o"
+  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeechService.dia"
+  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeechService.swiftdeps"
+"/Users/lw/Projects/SelfLie/SelfLie/Onboarding/SpeakAndRecordView.swift":
+  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeakAndRecordView.swiftconstvalues"
+  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeakAndRecordView.o"
+  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeakAndRecordView.dia"
+  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeakAndRecordView.d"
+  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SpeakAndRecordView.swiftdeps"
+"/Users/lw/Projects/SelfLie/SelfLie/WordHighlighter.swift":
+  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/WordHighlighter.dia"
+  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/WordHighlighter.o"
+  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/WordHighlighter.swiftconstvalues"
+  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/WordHighlighter.d"
+  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/WordHighlighter.swiftdeps"

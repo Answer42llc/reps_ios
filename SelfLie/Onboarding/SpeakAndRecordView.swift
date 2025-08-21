@@ -11,6 +11,11 @@ struct SpeakAndRecordView: View {
     @State private var errorMessage = ""
     @State private var similarity: Float = 0.0
     
+    // Edit alert states
+    @State private var showEditAlert = false
+    @State private var editingText = ""
+    @FocusState private var isTextEditorFocused: Bool
+    
     // Smart recording stop states (same as PracticeView)
     @State private var hasGoodSimilarity = false
     @State private var capturedRecognitionText: String = ""
@@ -105,6 +110,95 @@ struct SpeakAndRecordView: View {
                 }
             }
         }
+        .overlay(
+            Group {
+                if showEditAlert {
+                    ZStack {
+                        // Background dimming
+                        Color.black.opacity(0.3)
+                            .ignoresSafeArea()
+                            .onTapGesture { } // Prevent dismissal on background tap
+                        
+                        // Alert dialog matching app's visual style
+                        VStack(spacing: 24) {
+                            // Title
+                            Text("Adjust your affirmation")
+                                .font(.title3)
+                                .fontWeight(.medium)
+                                .fontDesign(.serif)
+                            
+                            // Text editor with app's styling
+                            TextEditor(text: $editingText)
+                                .font(.body)
+                                .fontDesign(.serif)
+                                .frame(minHeight: 100, maxHeight: 150)
+                                .padding(12)
+                                .background(Color.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.purple.opacity(0.3), lineWidth: 1)
+                                )
+                                .cornerRadius(12)
+                                .focused($isTextEditorFocused)
+                            
+                            // Buttons matching OnboardingContinueButton style
+                            HStack(spacing: 12) {
+                                // Cancel button - secondary style
+                                Button {
+                                    showEditAlert = false
+                                    editingText = onboardingData.affirmationText // Reset
+                                } label: {
+                                    Text("Cancel")
+                                        .font(.headline)
+                                        .foregroundColor(.black)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 16)
+                                        .background(Color.gray.opacity(0.1))
+                                        .cornerRadius(25)
+                                }
+                                
+                                // Done button - primary style matching OnboardingContinueButton
+                                Button {
+                                    let trimmed = editingText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmed.isEmpty {
+                                        onboardingData.affirmationText = trimmed
+                                        // Reset recording states when text changes
+                                        if recordingState != .idle {
+                                            recordingState = .idle
+                                            similarity = 0.0
+                                            highlightedWordIndices.removeAll()
+                                            hasGoodSimilarity = false
+                                            capturedRecognitionText = ""
+                                            // Clean up any temporary recording
+                                            try? FileManager.default.removeItem(at: onboardingRecordingURL)
+                                            // Generate new URL for next recording
+                                            onboardingRecordingURL = {
+                                                let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                                                return documentsPath.appendingPathComponent("onboarding_\(UUID().uuidString).m4a")
+                                            }()
+                                        }
+                                    }
+                                    showEditAlert = false
+                                } label: {
+                                    Text("Done")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 16)
+                                        .background(Color.purple)
+                                        .cornerRadius(25)
+                                }
+                            }
+                        }
+                        .padding(24)
+                        .background(Color(hex: "#f9f9f9"))
+                        .cornerRadius(20)
+                        .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 10)
+                        .padding(.horizontal, 30)
+                    }
+                }
+            }
+        )
     }
     
     // MARK: - Card View (using common component from PracticeView)
@@ -114,13 +208,36 @@ struct SpeakAndRecordView: View {
                 statusArea
             },
             mainContent: {
-                // Affirmation text
-                HighlightedAffirmationText(
-                    text: onboardingData.affirmationText,
-                    highlightedWordIndices: highlightedWordIndices
-                )
-                .font(.title2)
-                .multilineTextAlignment(.center)
+                VStack(spacing: 16) {
+                    // Affirmation text
+                    HighlightedAffirmationText(
+                        text: onboardingData.affirmationText,
+                        highlightedWordIndices: highlightedWordIndices
+                    )
+                    .padding(24)
+                    .font(.title2)
+                    .multilineTextAlignment(.center)
+                    
+                    // Hint text - only show in idle state
+                    if recordingState == .idle {
+                        Button(action:{
+                            editingText = onboardingData.affirmationText
+                            showEditAlert = true
+                            isTextEditorFocused = true
+                        }){
+                            HStack{
+                                Image(systemName: "pencil.line")
+                                Text("Not you expected? Tap to adjust")
+                                    .font(.footnote)
+                            }
+                            .foregroundColor(.gray.opacity(0.6))
+
+                        }
+                        .padding(8)
+                        .background(Color(hex: "f9f9f9"))
+                        .cornerRadius(20)
+                    }
+                }
             },
             actionContent: {
                 PracticeCardActionButton(
@@ -153,7 +270,7 @@ struct SpeakAndRecordView: View {
     private var titleForState: String {
         switch recordingState {
         case .idle:
-            return "Great! Now say it aloud and record yourself 👍"
+            return "👍 Great! Now say it aloud and record."
         case .recording:
             return "Recording..."
         case .analyzing:

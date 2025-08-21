@@ -1,18 +1,18 @@
-"/Users/lw/Projects/SelfLie/SelfLie/ContentView.swift":
-  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.swiftdeps"
-  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.d"
-  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.swiftconstvalues"
-  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.o"
-  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/ContentView.dia"
-"/Users/lw/Projects/SelfLie/SelfLie/Navigation/NavigationCoordinator.swift":
-  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/NavigationCoordinator.swiftconstvalues"
-  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/NavigationCoordinator.d"
-  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/NavigationCoordinator.o"
-  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/NavigationCoordinator.swiftdeps"
-  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/NavigationCoordinator.dia"
-"/Users/lw/Projects/SelfLie/SelfLie/Onboarding/FirstPracticeView.swift":
-  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.o"
-  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.dia"
-  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.swiftdeps"
-  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.d"
-  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/FirstPracticeView.swiftconstvalues"
+"/Users/lw/Projects/SelfLie/SelfLie/SelfLieApp.swift":
+  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SelfLieApp.swiftdeps"
+  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SelfLieApp.swiftconstvalues"
+  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SelfLieApp.dia"
+  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SelfLieApp.d"
+  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/SelfLieApp.o"
+"/Users/lw/Projects/SelfLie/SelfLie/Onboarding/OnboardingCompleteView.swift":
+  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/OnboardingCompleteView.swiftconstvalues"
+  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/OnboardingCompleteView.d"
+  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/OnboardingCompleteView.swiftdeps"
+  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/OnboardingCompleteView.o"
+  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/OnboardingCompleteView.dia"
+"/Users/lw/Projects/SelfLie/SelfLie/AddAffirmationView.swift":
+  const-values: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/AddAffirmationView.swiftconstvalues"
+  diagnostics: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/AddAffirmationView.dia"
+  dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/AddAffirmationView.d"
+  object: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/AddAffirmationView.o"
+  swift-dependencies: "/Users/lw/Projects/SelfLie/build/Build/Intermediates.noindex/SelfLie.build/Debug-iphonesimulator/SelfLie.build/Objects-normal/arm64/AddAffirmationView.swiftdeps"
