@@ -6,18 +6,6 @@ class NavigationCoordinator {
     private var pathStack: [NavigationDestination] = []
     
     // MARK: - Navigation Actions
-    func navigateToAddAffirmation() {
-        let destination = NavigationDestination.addAffirmation
-        path.append(destination)
-        pathStack.append(destination)
-    }
-    
-    func navigateToRecording(text: String) {
-        let destination = NavigationDestination.recording(text: text)
-        path.append(destination)
-        pathStack.append(destination)
-    }
-    
     func navigateToPractice(affirmation: Affirmation) {
         let destination = NavigationDestination.practice(affirmation: affirmation)
         path.append(destination)
@@ -52,11 +40,6 @@ class NavigationCoordinator {
     }
     
     // MARK: - Convenience Methods
-    func completeAddAffirmationFlow() {
-        // After successful recording, go back to dashboard
-        popToRoot()
-    }
-    
     func completePracticeSession() {
         // After practice, go back to dashboard
         popToRoot()
@@ -74,18 +57,11 @@ class NavigationCoordinator {
 
 // MARK: - Navigation Destinations
 enum NavigationDestination: Hashable {
-    case addAffirmation
-    case recording(text: String)
     case practice(affirmation: Affirmation)
     
     // Hashable conformance
     func hash(into hasher: inout Hasher) {
         switch self {
-        case .addAffirmation:
-            hasher.combine("addAffirmation")
-        case .recording(let text):
-            hasher.combine("recording")
-            hasher.combine(text)
         case .practice(let affirmation):
             hasher.combine("practice")
             hasher.combine(affirmation.id)
@@ -94,14 +70,8 @@ enum NavigationDestination: Hashable {
     
     static func == (lhs: NavigationDestination, rhs: NavigationDestination) -> Bool {
         switch (lhs, rhs) {
-        case (.addAffirmation, .addAffirmation):
-            return true
-        case (.recording(let text1), .recording(let text2)):
-            return text1 == text2
         case (.practice(let aff1), .practice(let aff2)):
             return aff1.id == aff2.id
-        default:
-            return false
         }
     }
 }

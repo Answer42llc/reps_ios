@@ -6,6 +6,7 @@ struct RecordingView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     
     let affirmationText: String
+    @Binding var showingAddAffirmation: Bool
     
     @State private var audioService = AudioService()
     @State private var speechService = SpeechService()
@@ -52,7 +53,7 @@ struct RecordingView: View {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("Cancel") {
                     cleanup()
-                    navigationCoordinator.goBack()
+                    showingAddAffirmation = false
                 }
             }
         }
@@ -366,7 +367,7 @@ struct RecordingView: View {
             
             // Navigate back to dashboard after a brief delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                navigationCoordinator.completeAddAffirmationFlow()
+                showingAddAffirmation = false
             }
         } catch {
             showError("Failed to save affirmation: \(error.localizedDescription)")
@@ -457,7 +458,7 @@ enum RecordingState {
 
 #Preview {
     NavigationStack {
-        RecordingView(affirmationText: "I never smoke, because smoking is smelly")
+        RecordingView(affirmationText: "I never smoke, because smoking is smelly", showingAddAffirmation: .constant(true))
     }
     .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }

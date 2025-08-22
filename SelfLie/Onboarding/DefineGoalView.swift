@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct DefineGoalView: View {
-    @Bindable var onboardingData: OnboardingData
+struct DefineGoalView<DataModel: AffirmationDataProtocol>: View {
+    @Bindable var dataModel: DataModel
     @State private var customGoal = ""
     @FocusState private var isGoalFieldFocused: Bool
     
@@ -67,7 +67,7 @@ struct DefineGoalView: View {
             
             VStack{
                 // Progress indicator
-                OnboardingProgressBar(progress: onboardingData.progress)
+                OnboardingProgressBar(progress: dataModel.progress)
                     .padding(.top, 20)
                     .padding(.bottom, 30)
                 Spacer()
@@ -86,8 +86,8 @@ struct DefineGoalView: View {
                     
                     // Navigation arrow
                     OnboardingArrowButton(isEnabled: isGoalValid) {
-                        onboardingData.goal = customGoal
-                        onboardingData.nextStep()
+                        dataModel.goal = customGoal
+                        dataModel.nextStep()
                     }
                 }
                 .padding(.vertical, 4)
@@ -112,5 +112,5 @@ struct DefineGoalView: View {
 }
 
 #Preview {
-    DefineGoalView(onboardingData: OnboardingData())
+    DefineGoalView(dataModel: OnboardingData())
 }

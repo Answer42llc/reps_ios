@@ -8,9 +8,9 @@ struct OnboardingContainerView: View {
             Group {
                 switch onboardingData.currentStep {
                 case 1:
-                    DefineGoalView(onboardingData: onboardingData)
+                    DefineGoalView(dataModel: onboardingData)
                 case 2:
-                    GiveReasonView(onboardingData: onboardingData)
+                    GiveReasonView(dataModel: onboardingData)
                 case 3:
                     SpeakAndRecordView(onboardingData: onboardingData)
                 case 4:
@@ -18,7 +18,7 @@ struct OnboardingContainerView: View {
                 case 5:
                     OnboardingCompleteView(onboardingData: onboardingData)
                 default:
-                    DefineGoalView(onboardingData: onboardingData)
+                    DefineGoalView(dataModel: onboardingData)
                 }
             }
             .navigationBarHidden(true)

@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct GiveReasonView: View {
-    @Bindable var onboardingData: OnboardingData
+struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
+    @Bindable var dataModel: DataModel
     @State private var customReason = ""
     @FocusState private var isReasonFieldFocused: Bool
     
@@ -10,12 +10,12 @@ struct GiveReasonView: View {
     }
     
     private var dynamicPlaceholder: String {
-        "Why you want to \(onboardingData.goal.lowercased())?"
+        "Why you want to \(dataModel.goal.lowercased())?"
     }
     
     private var presetReasons: [String] {
         // Mock data for now - will be dynamic later
-        if onboardingData.goal.lowercased().contains("smoke") {
+        if dataModel.goal.lowercased().contains("smoke") {
             return ["Smoke is smelly", "Girls don't like it"]
         } else {
             return ["It makes me feel good", "It's the right thing to do"]
@@ -70,7 +70,7 @@ struct GiveReasonView: View {
             
             VStack{
                 // Progress indicator
-                OnboardingProgressBar(progress: onboardingData.progress)
+                OnboardingProgressBar(progress: dataModel.progress)
                     .padding(.top, 20)
                     .padding(.bottom, 30)
                 Spacer()
@@ -89,9 +89,9 @@ struct GiveReasonView: View {
                     
                     // Navigation arrow
                     OnboardingArrowButton(isEnabled: isReasonValid) {
-                        onboardingData.reason = customReason
-                        onboardingData.generateAffirmation()
-                        onboardingData.nextStep()
+                        dataModel.reason = customReason
+                        dataModel.generateAffirmation()
+                        dataModel.nextStep()
                     }
                 }
                 .padding(.vertical, 4)
@@ -114,5 +114,5 @@ struct GiveReasonView: View {
 #Preview {
     let data = OnboardingData()
     data.goal = "Quit smoke"
-    return GiveReasonView(onboardingData: data)
+    return GiveReasonView(dataModel: data)
 }

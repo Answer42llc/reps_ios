@@ -30,10 +30,6 @@ struct ContentView: View {
                 DashboardView()
                     .navigationDestination(for: NavigationDestination.self) { destination in
                         switch destination {
-                        case .addAffirmation:
-                            AddAffirmationView()
-                        case .recording(let text):
-                            RecordingView(affirmationText: text)
                         case .practice(let affirmation):
                             PracticeView(affirmation: affirmation)
                         }

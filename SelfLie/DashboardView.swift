@@ -37,6 +37,7 @@ struct DashboardView: View {
     private var affirmations: FetchedResults<Affirmation>
     
     @State private var selectedAffirmation: Affirmation?
+    @State private var showingAddAffirmation = false
     
     var body: some View {
         VStack {
@@ -55,7 +56,7 @@ struct DashboardView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
-                    navigationCoordinator.navigateToAddAffirmation()
+                    showingAddAffirmation = true
                 }) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
@@ -65,6 +66,9 @@ struct DashboardView: View {
         }
         .fullScreenCover(item: $selectedAffirmation) { affirmation in
             PracticeView(affirmation: affirmation)
+        }
+        .fullScreenCover(isPresented: $showingAddAffirmation) {
+            AddAffirmationContainerView(showingAddAffirmation: $showingAddAffirmation)
         }
     }
 

@@ -1,17 +1,23 @@
+//
+//  AddAffirmationData.swift
+//  SelfLie
+//
+//  Created by lw on 8/22/25.
+//
+
 import Foundation
 
 @Observable
-class OnboardingData: AffirmationDataProtocol {
+class AddAffirmationData: AffirmationDataProtocol {
     var currentStep = 1
     var goal = ""
     var reason = ""
     var affirmationText = ""
     var audioURL: URL?
-    var practiceCount = 0
     var wordTimings: [WordTiming] = []
     
     var progress: Double {
-        Double(currentStep) / 5.0
+        Double(currentStep) / 3
     }
     
     func generateAffirmation() {
@@ -29,7 +35,7 @@ class OnboardingData: AffirmationDataProtocol {
     }
     
     func nextStep() {
-        if currentStep < 5 {
+        if currentStep < 3 {
             currentStep += 1
         }
     }
@@ -40,7 +46,6 @@ class OnboardingData: AffirmationDataProtocol {
         reason = ""
         affirmationText = ""
         audioURL = nil
-        practiceCount = 0
         wordTimings = []
     }
 }
