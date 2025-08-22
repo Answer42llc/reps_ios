@@ -21,6 +21,11 @@ struct RecordingView: View {
     @State private var maxRecordingTimer: Timer?
     @State private var recordingStartTime: Date?
     @State private var hasGoodSimilarity = false
+    @State private var capturedRecognitionText: String = ""
+    
+    // Word highlighting states (matching SpeakAndRecordView)
+    @State internal var highlightedWordIndices: Set<Int> = []
+    @State internal var currentWordIndex: Int = -1
     
     private var recordingURL: URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -28,38 +33,64 @@ struct RecordingView: View {
     }
     
     var body: some View {
-        VStack(spacing: 32) {
-            headerView
+        ZStack {
+            // Background color
+            Color(hex: "#f9f9f9")
+                .ignoresSafeArea()
             
-            affirmationTextView
-            
-            recordingSection
-            
-            if recordingState == .recording {
-                realTimeRecognitionView
-            }
-            
-            if recordingState == .analyzing {
-                analysisView
-            }
-            
-            Spacer()
-        }
-        .padding()
-        .navigationTitle("Speak the lie to yourself")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button("Cancel") {
-                    cleanup()
-                    showingAddAffirmation = false
+            VStack(spacing: 0) {
+                // Fixed height title and description area
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(titleForState)
+                        .font(.largeTitle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(minHeight: 88, maxHeight: 88, alignment: .top)
+                    
+                    Text(descriptionForState)
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(recordingState == .idle ? 1 : 0)
+                        .frame(minHeight: 66, maxHeight: 66)
                 }
+                .padding(.horizontal, 16)
+                
+                // Card view with fixed position
+                cardView
+                    .padding(.top, 40)
+                
+                Spacer()
+                
+                // Bottom action area
+                actionButtonForState
+                    .padding(.bottom, 40)
+            }
+            .padding(.top, 80)
+            
+            // Cancel button overlay (top-left)
+            VStack {
+                HStack {
+                    Button("Cancel") {
+                        cleanup()
+                        showingAddAffirmation = false
+                    }
+                    .font(.body)
+                    .foregroundColor(.purple)
+                    .padding()
+                    
+                    Spacer()
+                }
+                Spacer()
             }
         }
+        .fontDesign(.serif)
+        .navigationBarHidden(true)
         .onAppear {
             // Generate unique filename for this recording session
             recordingFileName = "\(UUID().uuidString).m4a"
+            setupSpeechService()
         }
         .task {
             await requestPermissions()
@@ -72,6 +103,8 @@ struct RecordingView: View {
         .onChange(of: speechService.recognizedText) { _, newText in
             // Monitor for smart recording stop
             if recordingState == .recording && !newText.isEmpty {
+                capturedRecognitionText = newText
+                
                 let currentSimilarity = speechService.calculateSimilarity(
                     expected: affirmationText, 
                     recognized: newText
@@ -86,173 +119,123 @@ struct RecordingView: View {
         }
     }
     
-    private var headerView: some View {
-        VStack(spacing: 8) {
-            Text("Record Your Affirmation")
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            Text("Speak clearly and with conviction")
-                .font(.body)
-                .foregroundColor(.secondary)
-        }
-    }
-    
-    private var affirmationTextView: some View {
-        Text(affirmationText)
-            .font(.title3)
-            .fontWeight(.medium)
-            .multilineTextAlignment(.center)
-            .padding()
-            .background(Color(.systemGray6))
-            .cornerRadius(12)
-    }
-    
-    private var recordingSection: some View {
-        VStack(spacing: 24) {
-            recordingButton
-            
-            recordingStatusText
-            
-            if recordingState == .completed && similarity > 0 {
-                similarityFeedback
-            }
-        }
-    }
-    
-    private var recordingButton: some View {
-        Button(action: toggleRecording) {
-            Image(systemName: recordingState == .recording ? "stop.circle.fill" : "mic.circle.fill")
-                .font(.system(size: 80))
-                .foregroundColor(recordingButtonColor)
-                .scaleEffect(recordingState == .recording ? 1.2 : 1.0)
-                .animation(.easeInOut(duration: 0.2), value: recordingState == .recording)
-        }
-        .disabled(recordingState == .analyzing || (recordingState == .completed && similarity >= 0.8))
-        .sensoryFeedback(.impact, trigger: recordingState == .recording)
-    }
-    
-    private var recordingButtonColor: Color {
-        switch recordingState {
-        case .idle: return .purple
-        case .recording: return .red
-        case .analyzing: return .gray
-        case .completed: return similarity >= 0.8 ? .green : .orange
-        }
-    }
-    
-    private var recordingStatusText: some View {
-        Group {
-            switch recordingState {
-            case .idle:
-                Text("Tap to start recording")
-            case .recording:
-                Text("Recording... Tap to stop")
-            case .analyzing:
-                Text("Analyzing speech...")
-            case .completed:
-                Text(similarity >= 0.8 ? "Great! Recording saved" : "Tap mic to try again")
-            }
-        }
-        .font(.headline)
-        .foregroundColor(.secondary)
-    }
-    
-    private var similarityFeedback: some View {
-        VStack(spacing: 8) {
-            Text("Accuracy: \(Int(similarity * 100))%")
-                .font(.title3)
-                .fontWeight(.semibold)
-                .foregroundColor(similarity >= 0.8 ? .green : .orange)
-            
-            if similarity >= 0.8 {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text("Recording accepted!")
-                }
-            } else {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                    Text("Try speaking more clearly")
-                }
-            }
-        }
-        .padding()
-        .background(similarity >= 0.8 ? Color.green.opacity(0.1) : Color.orange.opacity(0.1))
-        .cornerRadius(8)
-    }
-    
-    private var realTimeRecognitionView: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "waveform")
-                    .foregroundColor(.blue)
-                Text("Listening...")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-            }
-            
-            if !speechService.recognizedText.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Recognized:")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text(speechService.recognizedText)
-                        .font(.body)
-                        .padding()
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(8)
-                    
-                    // Real-time similarity calculation
-                    let currentSimilarity = speechService.calculateSimilarity(
-                        expected: affirmationText, 
-                        recognized: speechService.recognizedText
+    // MARK: - Card View
+    private var cardView: some View {
+        PracticeCardView(
+            statusContent: {
+                statusArea
+            },
+            mainContent: {
+                VStack(spacing: 16) {
+                    // Affirmation text with highlighting
+                    HighlightedAffirmationText(
+                        text: affirmationText,
+                        highlightedWordIndices: highlightedWordIndices
                     )
+                    .padding(24)
+                    .font(.title2)
+                    .multilineTextAlignment(.center)
                     
-                    HStack {
-                        Text("Accuracy: \(Int(currentSimilarity * 100))%")
-                            .font(.caption)
-                            .foregroundColor(currentSimilarity >= 0.8 ? .green : .orange)
-                        Spacer()
-                        if currentSimilarity >= 0.8 {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            if hasGoodSimilarity {
-                                Text("🤫")
-                                    .font(.caption2)
-                                    .foregroundColor(.blue)
-                            }
+                    // Real-time recognition feedback (only during recording)
+                    if recordingState == .recording && !speechService.recognizedText.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Recognized:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Text(speechService.recognizedText)
+                                .font(.body)
+                                .padding()
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(8)
                         }
                     }
                 }
+            },
+            actionContent: {
+                EmptyView()
+            },
+            showActionArea: false
+        )
+    }
+    
+    @ViewBuilder
+    private var statusArea: some View {
+        if recordingState == .recording {
+            PracticeStatusPill(text: "Speak now")
+        } else if recordingState == .analyzing {
+            PracticeStatusPill(text: "Analyzing...")
+        } else if recordingState == .completed && similarity >= 0.8 {
+            PracticeSuccessStatus()
+        } else if recordingState == .completed && similarity < 0.8 {
+            PracticeFailureStatus()
+        }
+    }
+    
+    private var titleForState: String {
+        switch recordingState {
+        case .idle:
+            return "Record Your Affirmation"
+        case .recording:
+            return "Recording..."
+        case .analyzing:
+            return "Analyzing..."
+        case .completed:
+            if similarity >= 0.8 {
+                return "Great! Recording saved"
             } else {
-                Text("Start speaking...")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
+                return "Please try again"
             }
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
     }
     
-    private var analysisView: some View {
-        VStack {
-            ProgressView()
-                .scaleEffect(1.5)
-            Text("Processing your recording...")
-                .font(.caption)
-                .foregroundColor(.secondary)
+    private var descriptionForState: String {
+        switch recordingState {
+        case .idle:
+            return "Speak clearly and with conviction"
+        default:
+            return ""
         }
     }
     
+    @ViewBuilder
+    private var actionButtonForState: some View {
+        switch recordingState {
+        case .idle:
+            RecordingButton(isRecording: false, action: toggleRecording)
+            
+        case .recording:
+            RecordingButton(isRecording: true, action: toggleRecording)
+            
+        case .analyzing:
+            LoadingIndicator()
+            
+        case .completed:
+            if similarity >= 0.8 {
+                // Success - auto-navigate after delay
+                EmptyView()
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            showingAddAffirmation = false
+                        }
+                    }
+            } else {
+                // Retry button
+                RecordingButton(isRecording: false, action: toggleRecording)
+            }
+        }
+    }
+    
+    // MARK: - Setup
+    private func setupSpeechService() {
+        speechService.onWordRecognized = { [self] recognizedText, wordIndices in
+            Task { @MainActor in
+                highlightedWordIndices = wordIndices
+            }
+        }
+    }
+    
+    // MARK: - Recording Logic
     private func toggleRecording() {
         switch recordingState {
         case .idle:
@@ -267,6 +250,9 @@ struct RecordingView: View {
                 // Reset for retry
                 recordingState = .idle
                 similarity = 0.0
+                capturedRecognitionText = ""
+                highlightedWordIndices.removeAll()
+                hasGoodSimilarity = false
                 // Generate new filename for retry
                 recordingFileName = "\(UUID().uuidString).m4a"
                 startRecording()
@@ -278,6 +264,8 @@ struct RecordingView: View {
         recordingState = .recording
         recordingStartTime = Date()
         hasGoodSimilarity = false
+        highlightedWordIndices.removeAll()
+        capturedRecognitionText = ""
         
         Task {
             do {
@@ -317,7 +305,9 @@ struct RecordingView: View {
         
         Task {
             // Calculate similarity using the real-time recognized text
-            let recognizedText = speechService.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let recognizedText = capturedRecognitionText.isEmpty ? 
+                speechService.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines) : 
+                capturedRecognitionText.trimmingCharacters(in: .whitespacesAndNewlines)
             
             print("🎯 Expected: '\(affirmationText)'")
             print("✅ Recognized: '\(recognizedText)'")
@@ -363,11 +353,6 @@ struct RecordingView: View {
             // Start audio analysis in background to generate precise word timings
             Task {
                 await analyzeAudioForWordTimings(affirmation: newAffirmation)
-            }
-            
-            // Navigate back to dashboard after a brief delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                showingAddAffirmation = false
             }
         } catch {
             showError("Failed to save affirmation: \(error.localizedDescription)")
@@ -457,8 +442,9 @@ enum RecordingState {
 }
 
 #Preview {
-    NavigationStack {
-        RecordingView(affirmationText: "I never smoke, because smoking is smelly", showingAddAffirmation: .constant(true))
-    }
+    RecordingView(
+        affirmationText: "I never smoke, because smoking is smelly",
+        showingAddAffirmation: .constant(true)
+    )
     .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }

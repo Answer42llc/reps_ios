@@ -11,8 +11,7 @@ struct DefineGoalView<DataModel: AffirmationDataProtocol>: View {
     
     var body: some View {
         ZStack{
-            ScrollView{
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
                     // Title and description
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Define your goal")
@@ -61,17 +60,8 @@ struct DefineGoalView<DataModel: AffirmationDataProtocol>: View {
                 }
                 .padding(.top,80)
                 .fontDesign(.serif)
-                .ignoresSafeArea(.keyboard, edges: .bottom) // Allow keyboard to show naturally
-            }
 
             
-            VStack{
-                // Progress indicator
-                OnboardingProgressBar(progress: dataModel.progress)
-                    .padding(.top, 20)
-                    .padding(.bottom, 30)
-                Spacer()
-            }
             
             // Bottom section with text field and navigation
             VStack(spacing: 0) {

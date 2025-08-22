@@ -15,9 +15,14 @@ class AddAffirmationData: AffirmationDataProtocol {
     var affirmationText = ""
     var audioURL: URL?
     var wordTimings: [WordTiming] = []
+    var isRecordingComplete = false
     
     var progress: Double {
-        Double(currentStep) / 3
+        // For add affirmation flow, keep at step 2 until recording completes
+        if currentStep == 3 && !isRecordingComplete {
+            return 2.0 / 3.0  // Stay at step 2
+        }
+        return Double(currentStep) / 3.0
     }
     
     func generateAffirmation() {
@@ -40,6 +45,10 @@ class AddAffirmationData: AffirmationDataProtocol {
         }
     }
     
+    func completeRecording() {
+        isRecordingComplete = true
+    }
+    
     func reset() {
         currentStep = 1
         goal = ""
@@ -47,5 +56,6 @@ class AddAffirmationData: AffirmationDataProtocol {
         affirmationText = ""
         audioURL = nil
         wordTimings = []
+        isRecordingComplete = false
     }
 }

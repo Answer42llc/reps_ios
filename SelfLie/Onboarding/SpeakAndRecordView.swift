@@ -1,8 +1,16 @@
 import SwiftUI
 import AVFoundation
 
-struct SpeakAndRecordView: View {
-    @Bindable var onboardingData: OnboardingData
+struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
+    @Bindable var dataModel: DataModel
+    
+    enum FlowType {
+        case onboarding
+        case addAffirmation
+    }
+    
+    let flowType: FlowType
+    @Binding var showingAddAffirmation: Bool
     
     @State private var recordingState: RecordingState = .idle
     @State private var audioService = AudioService()
@@ -23,6 +31,7 @@ struct SpeakAndRecordView: View {
     
     // Word timing generation tracking
     @State private var isGeneratingTimings = false
+    
     
     // Word highlighting states (reused from PracticeView)
     @State internal var highlightedWordIndices: Set<Int> = []
@@ -50,7 +59,7 @@ struct SpeakAndRecordView: View {
                         .fixedSize(horizontal: false, vertical: true) // Allow text to wrap
                         .frame(minHeight: 88, maxHeight: 88, alignment: .top) // Fixed space for up to 3 lines
                     
-                    Text("Giving your goals a clear reason can helps you achieve them, as our brains are always looking for reasons.")
+                    Text(descriptionForState)
                         .font(.body)
                         .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -71,14 +80,6 @@ struct SpeakAndRecordView: View {
                     .padding(.bottom, 40)
             }
             .padding(.top, 80)
-            
-            VStack{
-                // Progress indicator
-                OnboardingProgressBar(progress: onboardingData.progress)
-                    .padding(.top, 20)
-                    .padding(.bottom, 30)
-                Spacer()
-            }
 
         }
         .fontDesign(.serif)
@@ -98,7 +99,7 @@ struct SpeakAndRecordView: View {
                 print("📝 [SpeakAndRecordView] Captured recognition text: '\(newText)'")
                 
                 let currentSimilarity = speechService.calculateSimilarity(
-                    expected: onboardingData.affirmationText,
+                    expected: dataModel.affirmationText,
                     recognized: newText
                 )
                 
@@ -146,7 +147,7 @@ struct SpeakAndRecordView: View {
                                 // Cancel button - secondary style
                                 Button {
                                     showEditAlert = false
-                                    editingText = onboardingData.affirmationText // Reset
+                                    editingText = dataModel.affirmationText // Reset
                                 } label: {
                                     Text("Cancel")
                                         .font(.headline)
@@ -161,7 +162,7 @@ struct SpeakAndRecordView: View {
                                 Button {
                                     let trimmed = editingText.trimmingCharacters(in: .whitespacesAndNewlines)
                                     if !trimmed.isEmpty {
-                                        onboardingData.affirmationText = trimmed
+                                        dataModel.affirmationText = trimmed
                                         // Reset recording states when text changes
                                         if recordingState != .idle {
                                             recordingState = .idle
@@ -211,7 +212,7 @@ struct SpeakAndRecordView: View {
                 VStack(spacing: 16) {
                     // Affirmation text
                     HighlightedAffirmationText(
-                        text: onboardingData.affirmationText,
+                        text: dataModel.affirmationText,
                         highlightedWordIndices: highlightedWordIndices
                     )
                     .padding(24)
@@ -221,7 +222,7 @@ struct SpeakAndRecordView: View {
                     // Hint text - only show in idle state
                     if recordingState == .idle {
                         Button(action:{
-                            editingText = onboardingData.affirmationText
+                            editingText = dataModel.affirmationText
                             showEditAlert = true
                             isTextEditorFocused = true
                         }){
@@ -267,6 +268,17 @@ struct SpeakAndRecordView: View {
         }
     }
     
+    private var descriptionForState: String {
+        switch recordingState {
+        case .idle:
+            return flowType == .onboarding ? 
+                "Giving your goals a clear reason can helps you achieve them, as our brains are always looking for reasons." :
+                "Speak clearly and with conviction"
+        default:
+            return ""
+        }
+    }
+    
     private var titleForState: String {
         switch recordingState {
         case .idle:
@@ -274,14 +286,12 @@ struct SpeakAndRecordView: View {
         case .recording:
             return "Recording..."
         case .analyzing:
-            if isGeneratingTimings {
-                return "Preparing for practice..."
-            } else {
-                return "Analyzing..."
-            }
+            return "Analyzing..."
         case .completed:
             if similarity >= 0.8 {
-                return "👏 Well done! Let's listen and repeat it to motivate yourself."
+                return flowType == .onboarding ? 
+                    "👏 Well done! Let's listen and repeat it to motivate yourself." :
+                    "👏Well done!"
             } else {
                 return "Please try again, speaking louder and more clearly."
             }
@@ -304,15 +314,35 @@ struct SpeakAndRecordView: View {
             
         case .completed:
             if similarity >= 0.8 {
-                OnboardingContinueButton(
-                    title: "Continue",
-                    isEnabled: true
-                ) {
-                    // Save the recording URL and proceed
-                    onboardingData.audioURL = onboardingRecordingURL
-                    onboardingData.nextStep()
+                if flowType == .onboarding {
+                    OnboardingContinueButton(
+                        title: "Continue",
+                        isEnabled: true
+                    ) {
+                        // Save the recording URL and proceed
+                        dataModel.audioURL = onboardingRecordingURL
+                        dataModel.nextStep()
+                    }
+                    .padding(.horizontal, 20)
+                } else {
+                    // Add affirmation flow - show Done button that dismisses
+                    Button(action: {
+                        // Save recording data
+                        dataModel.audioURL = onboardingRecordingURL
+                        dataModel.wordTimings = wordTimings
+                        // Navigate to RecordingView to save affirmation
+                        showingAddAffirmation = false
+                    }) {
+                        Text("Done")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color.purple)
+                            .cornerRadius(25)
+                    }
+                    .padding(.horizontal, 20)
                 }
-                .padding(.horizontal, 20)
             } else {
                 // Empty - retry button is in cardActionArea inside the card
                 RecordingButton(isRecording: false, action: toggleRecording)
@@ -390,7 +420,7 @@ struct SpeakAndRecordView: View {
                 try await audioService.startRecording(to: onboardingRecordingURL)
                 
                 // Start speech recognition
-                try speechService.startRecognition(expectedText: onboardingData.affirmationText)
+                try speechService.startRecognition(expectedText: dataModel.affirmationText)
                 
                 // Set up maximum recording timer (10 seconds) - same as PracticeView
                 await MainActor.run {
@@ -426,13 +456,13 @@ struct SpeakAndRecordView: View {
             let finalSimilarity: Float
             if !capturedRecognitionText.isEmpty {
                 finalSimilarity = speechService.calculateSimilarity(
-                    expected: onboardingData.affirmationText,
+                    expected: dataModel.affirmationText,
                     recognized: capturedRecognitionText
                 )
             } else {
                 // Fallback to word count ratio
                 let recognizedWordCount = highlightedWordIndices.count
-                let totalWords = onboardingData.affirmationText.components(separatedBy: " ").count
+                let totalWords = dataModel.affirmationText.components(separatedBy: " ").count
                 finalSimilarity = Float(recognizedWordCount) / Float(totalWords)
             }
             
@@ -452,12 +482,20 @@ struct SpeakAndRecordView: View {
                     print("🎯 [SpeakAndRecordView] Generating word timings...")
                     let timings = try await speechService.analyzeAudioFile(
                         at: onboardingRecordingURL,
-                        expectedText: onboardingData.affirmationText
+                        expectedText: dataModel.affirmationText
                     )
                     
                     await MainActor.run {
-                        onboardingData.wordTimings = timings
+                        wordTimings = timings
+                        dataModel.wordTimings = timings
                         print("✅ [SpeakAndRecordView] Generated \(timings.count) word timings")
+                        
+                        // Mark recording as complete in data model for add affirmation flow
+                        if flowType == .addAffirmation {
+                            if let addData = dataModel as? AddAffirmationData {
+                                addData.completeRecording()
+                            }
+                        }
                         
                         // Now all analysis is complete, switch to completed state
                         recordingState = .completed
@@ -468,6 +506,13 @@ struct SpeakAndRecordView: View {
                     
                     await MainActor.run {
                         // Even if timing generation fails, allow user to continue
+                        // Mark recording as complete in data model for add affirmation flow
+                        if flowType == .addAffirmation {
+                            if let addData = dataModel as? AddAffirmationData {
+                                addData.completeRecording()
+                            }
+                        }
+                        
                         recordingState = .completed
                         isGeneratingTimings = false
                     }
@@ -501,12 +546,29 @@ struct SpeakAndRecordView: View {
     
 }
 
-#Preview {
+#Preview("Onboarding") {
     let data = OnboardingData()
     data.currentStep = 3
     data.goal = "quit smoke"
     data.reason = "smoke is smelly"
     data.generateAffirmation()
-    return SpeakAndRecordView(onboardingData: data)
+    return SpeakAndRecordView(
+        dataModel: data,
+        flowType: .onboarding,
+        showingAddAffirmation: .constant(false)
+    )
+}
+
+#Preview("Add Affirmation") {
+    let data = AddAffirmationData()
+    data.currentStep = 3
+    data.goal = "quit smoke"
+    data.reason = "smoke is smelly"
+    data.generateAffirmation()
+    return SpeakAndRecordView(
+        dataModel: data,
+        flowType: .addAffirmation,
+        showingAddAffirmation: .constant(true)
+    )
 }
 

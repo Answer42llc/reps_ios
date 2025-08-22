@@ -540,7 +540,7 @@ class AudioSessionManager {
     private func setupAudioSession() {
         do {
             // playAndRecord 场景使用正确的音频选项组合
-            let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+            let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetooth]
             
             try audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
             try audioSession.setActive(true)
@@ -665,7 +665,7 @@ class AudioSessionManager {
                 
                 do {
                     // playAndRecord 场景使用固定的正确选项组合
-                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetooth]
                     
                     // Reconfigure the session with appropriate options
                     try self.audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
@@ -722,7 +722,7 @@ class AudioSessionManager {
     
     func getAudioSessionOptions(hasBluetoothDevice: Bool) -> AVAudioSession.CategoryOptions {
         // playAndRecord 场景始终使用相同的选项组合
-        return [.defaultToSpeaker, .allowBluetoothHFP]
+        return [.defaultToSpeaker, .allowBluetooth]
     }
     
     /// Ensure the audio session is active (session is already configured in init)
@@ -843,7 +843,7 @@ class AudioSessionManager {
                 
                 do {
                     // Reconfigure without deactivating - maintains audio control
-                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetooth]
                     
                     try self.audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
                     // Note: NOT calling setActive(false) - this prevents other apps from resuming

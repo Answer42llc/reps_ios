@@ -59,13 +59,6 @@ struct OnboardingCompleteView: View {
             }
             .padding(.top, 80)
             
-            // Progress bar at top
-            VStack {
-                OnboardingProgressBar(progress: 1.0)
-                    .padding(.top, 20)
-                    .padding(.bottom, 30)
-                Spacer()
-            }
         }
         .fontDesign(.serif)
         .alert("Error", isPresented: $showingError) {

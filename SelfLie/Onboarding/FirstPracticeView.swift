@@ -70,13 +70,6 @@ struct FirstPracticeView: View {
             }
             .padding(.top, 80)
             
-            VStack{
-                // Progress indicator at the top
-                OnboardingProgressBar(progress: onboardingData.progress)
-                    .padding(.top, 20)
-                    .padding(.bottom, 30)
-                Spacer()
-            }
         }
         .fontDesign(.serif)
         .alert("Error", isPresented: $showingError) {
