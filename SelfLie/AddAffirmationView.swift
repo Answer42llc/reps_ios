@@ -115,5 +115,6 @@ struct AddAffirmationView: View {
 #Preview {
     NavigationStack {
         AddAffirmationView()
+            .environment(NavigationCoordinator())
     }
 }

@@ -133,15 +133,12 @@ struct RetryButton: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            Text("✕ Try again")
-                .font(.body)
-                .foregroundColor(.gray)
-            
             Button(action: action) {
                 Image(systemName: "arrow.clockwise.circle.fill")
-                    .font(.system(size: 60))
-                    .foregroundColor(.purple)
+                    .foregroundStyle(.purple)
+                    .font(.system(size: 80))
             }
+            .foregroundStyle(Color(.secondarySystemBackground))
             .buttonStyle(PlainButtonStyle())
         }
     }

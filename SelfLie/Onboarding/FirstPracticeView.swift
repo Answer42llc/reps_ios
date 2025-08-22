@@ -235,9 +235,9 @@ struct FirstPracticeView: View {
     private var titleForState: String {
         switch practiceState {
         case .playback:
-            return "Recording is playing..."
+            return "Listen to your recording..."
         case .recording:
-            return "Recording..."
+            return "Speaking now..."
         case .analyzing:
             return "Analyzing..."
         case .success:

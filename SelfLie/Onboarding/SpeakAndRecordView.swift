@@ -246,7 +246,7 @@ struct SpeakAndRecordView: View {
                     action: toggleRecording
                 )
             },
-            showActionArea: recordingState == .completed && similarity < 0.8
+            showActionArea: false
         )
     }
     
@@ -315,7 +315,7 @@ struct SpeakAndRecordView: View {
                 .padding(.horizontal, 20)
             } else {
                 // Empty - retry button is in cardActionArea inside the card
-                EmptyView()
+                RecordingButton(isRecording: false, action: toggleRecording)
             }
         }
     }
