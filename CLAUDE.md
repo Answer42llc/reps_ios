@@ -93,3 +93,4 @@ struct Affirmation {
 - 计划中应该包含具体要改的代码，以及如何改，修改前后的代码都要列出来
 - 'allowBluetooth' was deprecated in iOS 8.0: renamed to 'AVAudioSession.CategoryOptions.allowBluetoothHFP'
 - 完成任务后默认进入 plan mode
+- use .allowBluetoothHFP instead of .allowBluetooth, 'allowBluetooth' was deprecated in iOS 8.0: renamed to 'AVAudioSession.CategoryOptions.allowBluetoothHFP', Use 'AVAudioSession.CategoryOptions.allowBluetoothHFP' instead
