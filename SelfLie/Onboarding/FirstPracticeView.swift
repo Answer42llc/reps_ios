@@ -111,7 +111,7 @@ struct FirstPracticeView: View {
             cardContent
         }
         .background(Color.white)
-        .cornerRadius(20)
+        .cornerRadius(12)
         .padding(.horizontal)
     }
     

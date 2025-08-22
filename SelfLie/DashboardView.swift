@@ -32,8 +32,7 @@ struct DashboardView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Affirmation.dateCreated, ascending: false)],
-        animation: .default)
+        sortDescriptors: [NSSortDescriptor(keyPath: \Affirmation.dateCreated, ascending: false)])
     private var affirmations: FetchedResults<Affirmation>
     
     @State private var selectedAffirmation: Affirmation?
@@ -94,67 +93,201 @@ struct DashboardView: View {
     private var affirmationsList: some View {
         ScrollView {
             LazyVStack(spacing: 16) {
-                ForEach(affirmations, id: \.id) { affirmation in
-                    AffirmationCardView(affirmation: affirmation) {
-                        selectedAffirmation = affirmation
-                    }
+                ForEach(affirmations, id: \.objectID) { affirmation in
+                    AffirmationCardView(
+                        affirmation: affirmation,
+                        onPlayTapped: {
+                            selectedAffirmation = affirmation
+                        },
+                        onDelete: {
+                            deleteAffirmation(affirmation)
+                        }
+                    )
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
-            .padding(.bottom,32)
+            .padding(.bottom, 32)
         }
     }
     
     private func deleteAffirmations(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { affirmations[$0] }.forEach(viewContext.delete)
-            
-            do {
-                try viewContext.save()
-            } catch {
-                // Handle error appropriately
-            }
+        offsets.map { affirmations[$0] }.forEach(viewContext.delete)
+        
+        do {
+            try viewContext.save()
+        } catch {
+            // Handle error appropriately
         }
+    }
+    
+    private func deleteAffirmation(_ affirmation: Affirmation) {
+        // Clear selection if deleting the selected affirmation
+        if selectedAffirmation?.objectID == affirmation.objectID {
+            selectedAffirmation = nil
+        }
+        
+        viewContext.delete(affirmation)
+        
+        do {
+            try viewContext.save()
+        } catch {
+            print("Failed to delete affirmation: \(error)")
+        }
+    }
+}
+
+// MARK: - Custom Context Menu
+struct CustomContextMenu: View {
+    @Binding var isShowing: Bool
+    let onDelete: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Delete option
+            Button(action: {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    isShowing = false
+                }
+                onDelete()
+            }) {
+                HStack {
+                    Image(systemName: "trash")
+                        .foregroundColor(.primary)
+                    Text("Delete")
+                        .foregroundColor(.primary)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .frame(width: 150)
+        .background(Color.white)
+        .cornerRadius(12)
+        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
     }
 }
 
 struct AffirmationCardView: View {
     let affirmation: Affirmation
     let onPlayTapped: () -> Void
+    let onDelete: () -> Void
+    
+    @State private var showCustomMenu = false
+    @State private var menuPosition: CGPoint = .zero
+    @State private var longPressLocation: CGPoint = .zero
     
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center,spacing: 0) {
-                    Text("🔥")
-                    Text("\(affirmation.repeatCount)/1000")
+        ZStack {
+            // Card content
+            HStack {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .center, spacing: 0) {
+                        Text("🔥")
+                        Text("\(affirmation.repeatCount)/1000")
+                            .foregroundColor(.primary)
+                    }
+                    .font(.subheadline)
+                    
+                    Text(affirmation.text)
+                        .font(.title3)
+                        .lineLimit(nil)
                         .foregroundColor(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .font(.subheadline)
-
                 
-                Text(affirmation.text)
-                    .font(.title3)
-//                    .fontWeight(.semibold)
-                    .lineLimit(nil)
-                    .foregroundColor(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                
+                Button(action: onPlayTapped) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.largeTitle)
+                        .foregroundColor(.purple)
+                }
             }
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(Rectangle())
+            .overlay(
+                GeometryReader { geometry in
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if !showCustomMenu {
+                                        longPressLocation = value.location
+                                        
+                                        let cardWidth = geometry.size.width
+                                        let cardHeight = geometry.size.height
+                                        let menuWidth: CGFloat = 150
+                                        let menuHeight: CGFloat = 48  // Height of single menu item
+                                        
+                                        // Determine if tap is on left or right side of card
+                                        let isLeftSide = value.location.x < cardWidth / 2
+                                        
+                                        // Calculate menu position based on tap location
+                                        var xOffset: CGFloat
+                                        var yOffset: CGFloat
+                                        
+                                        if isLeftSide {
+                                            // Tap on left: menu appears to the right (menu's left edge at finger)
+                                            xOffset = value.location.x - cardWidth/2 + menuWidth/2
+                                        } else {
+                                            // Tap on right: menu appears to the left (menu's right edge at finger)
+                                            xOffset = value.location.x - cardWidth/2 - menuWidth/2
+                                        }
+                                        
+                                        // Y-axis: menu top edge slightly above finger position
+                                        yOffset = value.location.y - cardHeight/2 + menuHeight/2 - 20
+                                        
+                                        // Boundary checks to keep menu within card bounds
+                                        let minX = -cardWidth/2 + menuWidth/2 + 10
+                                        let maxX = cardWidth/2 - menuWidth/2 - 10
+                                        xOffset = max(minX, min(maxX, xOffset))
+                                        
+                                        // Ensure menu doesn't go too high
+                                        if yOffset < -cardHeight/2 + menuHeight/2 {
+                                            yOffset = -cardHeight/2 + menuHeight/2 + 10
+                                        }
+                                        
+                                        menuPosition = CGPoint(x: xOffset, y: yOffset)
+                                    }
+                                }
+                        )
+                        .onTapGesture {
+                            if showCustomMenu {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    showCustomMenu = false
+                                }
+                            } else {
+                                onPlayTapped()
+                            }
+                        }
+                        .onLongPressGesture(minimumDuration: 0.5) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                showCustomMenu = true
+                            }
+                        }
+                }
+            )
             
-            Spacer()
-            
-            Button(action: onPlayTapped) {
-                Image(systemName: "play.circle.fill")
-                    .font(.largeTitle)
-                    .foregroundColor(.purple)
+            // Custom menu overlay
+            if showCustomMenu {
+                CustomContextMenu(
+                    isShowing: $showCustomMenu,
+                    onDelete: onDelete
+                )
+                .offset(x: menuPosition.x, y: menuPosition.y)
+                .transition(.scale(scale: 0.8, anchor: .center).combined(with: .opacity))
+                .zIndex(1)
             }
-        }
-        .padding(20)
-        .background(Color.white)
-        .cornerRadius(20)
-        .onTapGesture {
-            onPlayTapped()
         }
     }
 }
@@ -163,3 +296,4 @@ struct AffirmationCardView: View {
         DashboardView()
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
+

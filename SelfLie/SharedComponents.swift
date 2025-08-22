@@ -57,7 +57,7 @@ struct OnboardingAffirmationCard: View {
         }
         .frame(maxWidth: .infinity)
         .background(Color.white)
-        .cornerRadius(20)
+        .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 2)
     }
 }
@@ -80,30 +80,6 @@ struct RecordingButton: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
-    }
-}
-
-// MARK: - Status Pill Component
-struct StatusPill: View {
-    let text: String
-    let backgroundColor: Color
-    let textColor: Color
-    
-    init(text: String, backgroundColor: Color = .purple, textColor: Color = .white) {
-        self.text = text
-        self.backgroundColor = backgroundColor
-        self.textColor = textColor
-    }
-    
-    var body: some View {
-        Text(text)
-            .font(.headline)
-            .fontWeight(.semibold)
-            .foregroundColor(textColor)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
-            .background(backgroundColor)
-            .cornerRadius(20)
     }
 }
 
@@ -170,7 +146,7 @@ struct PracticeCardView<StatusContent: View, MainContent: View, ActionContent: V
             .frame(maxWidth: .infinity)  // Ensure full width
         }
         .background(Color.white)
-        .cornerRadius(20)
+        .cornerRadius(12)
         .padding(.horizontal)
     }
 }
@@ -187,8 +163,8 @@ struct PracticeStatusPill: View {
             .foregroundColor(.white)
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
-            .background(Color.purple)
-            .cornerRadius(20)
+            .background(Capsule().fill(.purple))
+            .cornerRadius(12)
     }
 }
 
@@ -204,8 +180,8 @@ struct PracticeSuccessStatus: View {
         .foregroundColor(.white)
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
-        .background(Color.purple)
-        .cornerRadius(20)
+        .background(Capsule().fill(.purple))
+        .cornerRadius(12)
     }
 }
 
@@ -243,4 +219,10 @@ struct PracticeCardActionButton: View {
         .foregroundStyle(.purple)
         .clipShape(Capsule())
     }
+}
+
+
+#Preview {
+    PracticeStatusPill(text: "ddddddddd")
+    PracticeSuccessStatus()
 }

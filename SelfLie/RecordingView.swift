@@ -147,7 +147,7 @@ struct RecordingView: View {
                                 .font(.body)
                                 .padding()
                                 .background(Color.blue.opacity(0.1))
-                                .cornerRadius(8)
+                                .cornerRadius(12)
                         }
                     }
                 }

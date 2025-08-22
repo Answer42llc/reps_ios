@@ -11,6 +11,26 @@ struct OnboardingProgressBar: View {
     }
 }
 
+// MARK: - Capsule Border Button Style
+struct CapsuleBorderButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.body)
+            .foregroundColor(.black)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(Color.white)
+            )
+            .overlay(
+                Capsule()
+                    .stroke(Color.gray, lineWidth: 0.3)
+            )
+            .opacity(configuration.isPressed ? 0.5 : 1.0)
+    }
+}
+
 // MARK: - Preset Button
 struct OnboardingPresetButton: View {
     let title: String
@@ -19,18 +39,8 @@ struct OnboardingPresetButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.body)
-                .foregroundColor(.black)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.white)
-                .cornerRadius(20)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                )
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(CapsuleBorderButtonStyle())
     }
 }
 
@@ -63,11 +73,10 @@ struct OnboardingContinueButton: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(isEnabled ? Color.purple : Color.gray)
-                .cornerRadius(25)
+                .background(Capsule().fill(isEnabled ? Color.purple : Color.gray))
+                .cornerRadius(12)
         }
         .disabled(!isEnabled)
-        .buttonStyle(PlainButtonStyle())
     }
 }
 
@@ -80,4 +89,10 @@ struct OnboardingTextField: View {
         TextField(placeholder, text: $text)
             .font(.body)
     }
+}
+
+
+
+#Preview {
+    OnboardingPresetButton(title: "aaaaa", action: {})
 }

@@ -159,7 +159,7 @@ struct PracticeView: View {
             cardContent
         }
         .background(Color.white)
-        .cornerRadius(20)
+        .cornerRadius(12)
         .padding(.horizontal)
     }
     
@@ -192,8 +192,7 @@ struct PracticeView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)
-                .background(Color.purple)
-                .cornerRadius(20)
+                .background(Capsule().fill(.purple))
             } else if !silentRecordingDetected && similarity >= 0.8 {
                 // Success state shows checkmark
                 HStack(spacing: 8) {
@@ -206,8 +205,7 @@ struct PracticeView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)
-                .background(Color.purple)
-                .cornerRadius(20)
+                .background(Capsule().fill(.purple))
             }else{
                 Label{
                     Text("Try Again")
@@ -281,8 +279,7 @@ struct PracticeView: View {
                         .foregroundColor(.white)
                         .padding()
                         .frame(maxWidth: .infinity, maxHeight: 50)
-                        .background(Color.purple)
-                        .cornerRadius(25)
+                        .background(Capsule().fill(.purple))
                         .padding(.horizontal, 20)
 
                 }

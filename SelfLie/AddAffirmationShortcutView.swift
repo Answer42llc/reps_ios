@@ -69,10 +69,10 @@ struct AddAffirmationView: View {
                 .focused($isTextFieldFocused)
                 .padding(12)
                 .background(Color(.systemGray6))
-                .cornerRadius(8)
+                .cornerRadius(12)
                 .frame(minHeight: 120)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(isTextFieldFocused ? Color.purple : Color.clear, lineWidth: 2)
                 )
             

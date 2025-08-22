@@ -154,8 +154,8 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                                         .foregroundColor(.black)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
-                                        .background(Color.gray.opacity(0.1))
-                                        .cornerRadius(25)
+                                        .background(Capsule().fill(Color.gray.opacity(0.1)))
+                                        .cornerRadius(12)
                                 }
                                 
                                 // Done button - primary style matching OnboardingContinueButton
@@ -186,14 +186,14 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                                         .foregroundColor(.white)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 16)
-                                        .background(Color.purple)
-                                        .cornerRadius(25)
+                                        .background(Capsule().fill(Color.purple))
+                                        .cornerRadius(12)
                                 }
                             }
                         }
                         .padding(24)
                         .background(Color(hex: "#f9f9f9"))
-                        .cornerRadius(20)
+                        .cornerRadius(12)
                         .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 10)
                         .padding(.horizontal, 30)
                     }
@@ -221,22 +221,24 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                     
                     // Hint text - only show in idle state
                     if recordingState == .idle {
-                        Button(action:{
+                        Button(action: {
                             editingText = dataModel.affirmationText
                             showEditAlert = true
                             isTextEditorFocused = true
-                        }){
-                            HStack{
+                        }) {
+                            HStack {
                                 Image(systemName: "pencil.line")
                                 Text("Not you expected? Tap to adjust")
                                     .font(.footnote)
                             }
                             .foregroundColor(.gray.opacity(0.6))
-
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .background(
+                                Capsule()
+                                    .fill(Color(hex: "f9f9f9"))
+                            )
                         }
-                        .padding(8)
-                        .background(Color(hex: "f9f9f9"))
-                        .cornerRadius(20)
                     }
                 }
             },
@@ -338,8 +340,8 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
-                            .background(Color.purple)
-                            .cornerRadius(25)
+                            .background(Capsule().fill(Color.purple))
+                            .cornerRadius(12)
                     }
                     .padding(.horizontal, 20)
                 }
