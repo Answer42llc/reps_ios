@@ -540,9 +540,11 @@ class AudioSessionManager {
     private func setupAudioSession() {
         do {
             // playAndRecord 场景使用正确的音频选项组合
-            let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+            let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothA2DP]
             
             try audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
+            // Allow haptic feedback during recording (critical for PracticeView)
+            try audioSession.setAllowHapticsAndSystemSoundsDuringRecording(true)
             try audioSession.setActive(true)
             
             print("✅ [AudioSessionManager] Audio session initialized with .defaultToSpeaker and .allowBluetooth")
@@ -665,10 +667,12 @@ class AudioSessionManager {
                 
                 do {
                     // playAndRecord 场景使用固定的正确选项组合
-                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothA2DP]
                     
                     // Reconfigure the session with appropriate options
                     try self.audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
+                    // 关键：重配置后也要保持录音期间允许触觉
+                    try self.audioSession.setAllowHapticsAndSystemSoundsDuringRecording(true)
                     
                     // Query updated hardware properties after route change (Apple best practice)
                     let newSampleRate = self.audioSession.sampleRate
@@ -722,7 +726,7 @@ class AudioSessionManager {
     
     func getAudioSessionOptions(hasBluetoothDevice: Bool) -> AVAudioSession.CategoryOptions {
         // playAndRecord 场景始终使用相同的选项组合
-        return [.defaultToSpeaker, .allowBluetoothHFP]
+        return [.defaultToSpeaker, .allowBluetoothA2DP]
     }
     
     /// Ensure the audio session is active (session is already configured in init)
@@ -843,9 +847,11 @@ class AudioSessionManager {
                 
                 do {
                     // Reconfigure without deactivating - maintains audio control
-                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
+                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothA2DP]
                     
                     try self.audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
+                    // 关键：重配置后也要保持录音期间允许触觉
+                    try self.audioSession.setAllowHapticsAndSystemSoundsDuringRecording(true)
                     // Note: NOT calling setActive(false) - this prevents other apps from resuming
                     
                     // Query updated hardware properties

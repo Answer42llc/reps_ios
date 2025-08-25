@@ -221,6 +221,25 @@ class SpeechService: NSObject {
         print("✅ [SpeechService] Speech recognition stopped completely")
     }
     
+    /// Reset the speech recognizer to clear language settings
+    func resetRecognizer() {
+        print("🔄 [SpeechService] Resetting speech recognizer")
+        
+        // Stop any ongoing recognition
+        if isRecognizing {
+            stopRecognition()
+        }
+        
+        // Clear the recognizer to force re-detection on next use
+        speechRecognizer = nil
+        recognizedText = ""
+        recognizedWords.removeAll()
+        expectedTextUnits.removeAll()
+        accumulatedRecognizedText = ""
+        
+        print("✅ [SpeechService] Speech recognizer reset completed")
+    }
+    
     private func processWordRecognition(result: SFSpeechRecognitionResult) {
         guard !expectedTextUnits.isEmpty else { return }
         
@@ -764,7 +783,7 @@ extension SpeechService {
             
             var hasResumed = false // Track if continuation has been resumed
             
-            let task = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
+            _ = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
                 // Prevent multiple resume calls
                 guard !hasResumed else { 
                     print("⚠️ Recognition callback called after continuation was already resumed")
@@ -792,8 +811,9 @@ extension SpeechService {
                 }
             }
             
-            // Store task reference to prevent deallocation
-            self.recognitionTask = task
+            // Don't store task reference - let it be managed by the continuation
+            // This prevents conflict with real-time recognition task and avoids Error 1101
+            // The task will be automatically cleaned up when the continuation completes
         }
     }
     

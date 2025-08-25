@@ -182,6 +182,7 @@ struct FirstPracticeView: View {
     
     private var replayButton: some View {
         Button(action: {
+            HapticManager.shared.trigger(.lightImpact)
             Task {
                 await replayOriginalAudio()
             }
@@ -194,6 +195,7 @@ struct FirstPracticeView: View {
     
     private var cardActionArea: some View {
         Button(action: {
+            HapticManager.shared.trigger(.lightImpact)
             Task {
                 await restartPractice()
             }
@@ -312,7 +314,9 @@ struct FirstPracticeView: View {
         print("🎤 [FirstPracticeView] Starting recording")
         
         await MainActor.run {
+            HapticManager.shared.prepareImpact(.medium)
             practiceState = .recording
+            HapticManager.shared.trigger(.mediumImpact)
             recordingStartTime = Date()
             hasGoodSimilarity = false
             
@@ -367,9 +371,10 @@ struct FirstPracticeView: View {
     private func analyzeRecording() async {
         print("🔍 [FirstPracticeView] Analyzing recording")
         
-        let recognizedText = capturedRecognitionText.isEmpty ? 
-            speechService.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines) :
-            capturedRecognitionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 优先使用最终识别结果
+        let finalRecognizedText = speechService.recognizedText.isEmpty ? capturedRecognitionText : speechService.recognizedText
+        let recognizedText = finalRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("📝 [FirstPracticeView] Using final recognition text: '\(recognizedText)'")
         
         print("Expected: '\(onboardingData.affirmationText)'")
         print("Recognized: '\(recognizedText)'")
@@ -393,8 +398,10 @@ struct FirstPracticeView: View {
         await MainActor.run {
             if similarity >= 0.7 { // 70% threshold for onboarding
                 practiceState = .success
+                HapticManager.shared.trigger(.success)
             } else {
                 practiceState = .failure
+                HapticManager.shared.trigger(.warning)
             }
         }
     }

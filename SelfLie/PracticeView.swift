@@ -23,6 +23,8 @@ struct PracticeView: View {
     
     // Replay functionality
     @State private var isReplaying = false
+    @State private var waveAnimationPhase = 0
+    @State private var waveAnimationTimer: Timer?
     
     // Smart recording stop
     @State private var maxRecordingTimer: Timer?
@@ -240,6 +242,7 @@ struct PracticeView: View {
     
     private var cardActionArea: some View {
         Button(action: {
+            HapticManager.shared.trigger(.lightImpact)
             Task {
                 await restartPractice()
             }
@@ -269,6 +272,7 @@ struct PracticeView: View {
                 }
             } else if !silentRecordingDetected && similarity >= 0.8 {
                 Button(action: {
+                    HapticManager.shared.trigger(.lightImpact)
                     cleanup()
                     dismiss()
 
@@ -310,13 +314,55 @@ struct PracticeView: View {
     
     private var replayButton: some View {
         Button(action: {
+            HapticManager.shared.trigger(.lightImpact)
             Task {
                 await replayOriginalAudio()
             }
         }) {
-            Image(systemName: "speaker.wave.3.fill")
+            Image(systemName: speakerIconName)
                 .font(.title2)
                 .foregroundColor(.purple)
+                .frame(width: 44, height: 44)
+        }
+        .disabled(isReplaying)  // Disable button while playing
+        .onAppear {
+            startWaveAnimation()
+        }
+    }
+    
+    // Computed property for dynamic speaker icon
+    private var speakerIconName: String {
+        if !isReplaying {
+            return "speaker.wave.3.fill"
+        }
+        
+        // Cycle through wave states: 1 -> 2 -> 3 -> 1...
+        switch waveAnimationPhase % 3 {
+        case 0:
+            return "speaker.wave.1.fill"
+        case 1:
+            return "speaker.wave.2.fill"
+        case 2:
+            return "speaker.wave.3.fill"
+        default:
+            return "speaker.wave.3.fill"
+        }
+    }
+    
+    // Start wave animation timer
+    private func startWaveAnimation() {
+        // Clean up any existing timer
+        waveAnimationTimer?.invalidate()
+        
+        waveAnimationTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { timer in
+            if isReplaying {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    waveAnimationPhase += 1
+                }
+            } else {
+                // Reset wave phase when not playing
+                waveAnimationPhase = 0
+            }
         }
     }
     
@@ -498,7 +544,13 @@ struct PracticeView: View {
             let mainActorDelay = mainActorEntryTime.timeIntervalSince(preMainActorTime) * 1000
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚡ PRECISE: MainActor.run entered after \(String(format: "%.0fms", mainActorDelay)) delay")
             
+            // 触发前先准备中等强度触觉
+            HapticManager.shared.prepareImpact(.medium)
             practiceState = .recording
+            // 状态改变时触发中等强度触觉
+            HapticManager.shared.trigger(.mediumImpact)
+            print("🎯 [PracticeView] Triggered MEDIUM haptic feedback at state change to recording - user can speak NOW")
+            
             recordingStartTime = Date()
             hasGoodSimilarity = false
             
@@ -583,7 +635,13 @@ struct PracticeView: View {
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎤 ENTERED startRecording() method")
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎤 Starting recording stage")
         await MainActor.run {
+            // 触发前先准备重击触觉
+            HapticManager.shared.prepareImpact(.medium)
             practiceState = .recording
+            // Trigger haptic feedback immediately when state changes to recording
+            HapticManager.shared.trigger(.mediumImpact)
+            print("🎯 [PracticeView] Triggered MEDIUM haptic feedback at state change to recording (backup path) - user can speak NOW")
+            
             recordingStartTime = Date()
             hasGoodSimilarity = false
             
@@ -600,6 +658,7 @@ struct PracticeView: View {
             let recorderStartTime = Date()
             do {
                 try await audioService.startPreparedRecording()
+                
                 let recorderDuration = Date().timeIntervalSince(recorderStartTime) * 1000
                 print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Pre-prepared recorder started instantly in \(String(format: "%.0fms", recorderDuration))!")
             } catch {
@@ -607,6 +666,7 @@ struct PracticeView: View {
                 print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ Pre-prepared recorder unavailable in \(String(format: "%.0fms", recorderDuration)), falling back to regular recording")
                 let fallbackStartTime = Date()
                 try await audioService.startRecording(to: practiceURL)
+                
                 let fallbackDuration = Date().timeIntervalSince(fallbackStartTime) * 1000
                 print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Regular recording started successfully in \(String(format: "%.0fms", fallbackDuration))")
             }
@@ -691,17 +751,10 @@ struct PracticeView: View {
         
         let analysisStartTime = Date()
         
-        // 立即保存识别文本，避免在清理过程中丢失
-        let recognizedText: String
-        if !capturedRecognitionText.isEmpty {
-            // 使用之前捕获的文本（来自实时识别）
-            recognizedText = capturedRecognitionText.trimmingCharacters(in: .whitespacesAndNewlines)
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📝 Using captured recognition text: '\(recognizedText)'")
-        } else {
-            // 备用：使用当前的speechService文本
-            recognizedText = speechService.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📝 Using current speechService text: '\(recognizedText)'")
-        }
+        // 优先使用最终识别结果
+        let finalRecognizedText = speechService.recognizedText.isEmpty ? capturedRecognitionText : speechService.recognizedText
+        let recognizedText = finalRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📝 Using final recognition text: '\(recognizedText)'")
         
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 Expected text: '\(affirmation.text)'")
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Recognized text: '\(recognizedText)'")
@@ -732,9 +785,11 @@ struct PracticeView: View {
             
             if similarity >= 0.8 {
                 print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎉 Similarity above threshold - incrementing count")
+                HapticManager.shared.trigger(.success)
                 incrementCount()
             } else {
                 print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📈 Similarity below threshold - encouraging retry")
+                HapticManager.shared.trigger(.warning)
             }
         }
         
@@ -808,9 +863,11 @@ struct PracticeView: View {
         audioService.cleanupPreparedRecording()
         speechService.stopRecognition()
         
-        // Clean up timer
+        // Clean up timers
         maxRecordingTimer?.invalidate()
         maxRecordingTimer = nil
+        waveAnimationTimer?.invalidate()
+        waveAnimationTimer = nil
         
         // Clean up temporary recording file
         if verifyFileExists(at: practiceURL, context: "restart cleanup verification") {
@@ -842,9 +899,11 @@ struct PracticeView: View {
         audioService.cleanupPreparedRecording()
         speechService.stopRecognition()
         
-        // Clean up timer
+        // Clean up timers
         maxRecordingTimer?.invalidate()
         maxRecordingTimer = nil
+        waveAnimationTimer?.invalidate()
+        waveAnimationTimer = nil
         
         // Clean up temporary recording file
         if verifyFileExists(at: practiceURL, context: "cleanup verification") {

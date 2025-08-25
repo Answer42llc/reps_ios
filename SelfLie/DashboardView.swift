@@ -55,6 +55,7 @@ struct DashboardView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
+                    HapticManager.shared.trigger(.mediumImpact)
                     showingAddAffirmation = true
                 }) {
                     Image(systemName: "plus.circle.fill")
@@ -146,6 +147,7 @@ struct CustomContextMenu: View {
         VStack(alignment: .leading, spacing: 0) {
             // Delete option
             Button(action: {
+                HapticManager.shared.trigger(.heavyImpact)
                 withAnimation(.easeOut(duration: 0.2)) {
                     isShowing = false
                 }
@@ -201,7 +203,10 @@ struct AffirmationCardView: View {
                 
                 Spacer()
                 
-                Button(action: onPlayTapped) {
+                Button(action: {
+                    HapticManager.shared.trigger(.mediumImpact)
+                    onPlayTapped()
+                }) {
                     Image(systemName: "play.circle.fill")
                         .font(.largeTitle)
                         .foregroundColor(.purple)
@@ -267,10 +272,12 @@ struct AffirmationCardView: View {
                                     showCustomMenu = false
                                 }
                             } else {
+                                HapticManager.shared.trigger(.mediumImpact)
                                 onPlayTapped()
                             }
                         }
                         .onLongPressGesture(minimumDuration: 0.5) {
+                            HapticManager.shared.trigger(.lightImpact)
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 showCustomMenu = true
                             }

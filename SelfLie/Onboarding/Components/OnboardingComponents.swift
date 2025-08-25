@@ -37,7 +37,10 @@ struct OnboardingPresetButton: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            HapticManager.shared.trigger(.lightImpact)
+            action()
+        }) {
             Text(title)
         }
         .buttonStyle(CapsuleBorderButtonStyle())
@@ -50,7 +53,12 @@ struct OnboardingArrowButton: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            if isEnabled {
+                HapticManager.shared.trigger(.mediumImpact)
+            }
+            action()
+        }) {
             Image(systemName: "arrow.right.circle.fill")
                 .font(.system(size: 40))
                 .foregroundColor(isEnabled ? .purple : Color(UIColor(.purple.opacity(0.5))))
@@ -67,7 +75,12 @@ struct OnboardingContinueButton: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            if isEnabled {
+                HapticManager.shared.trigger(.mediumImpact)
+            }
+            action()
+        }) {
             Text(title)
                 .font(.headline)
                 .foregroundColor(.white)

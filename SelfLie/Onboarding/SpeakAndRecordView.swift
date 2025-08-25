@@ -146,6 +146,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                             HStack(spacing: 12) {
                                 // Cancel button - secondary style
                                 Button {
+                                    HapticManager.shared.trigger(.lightImpact)
                                     showEditAlert = false
                                     editingText = dataModel.affirmationText // Reset
                                 } label: {
@@ -160,6 +161,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                                 
                                 // Done button - primary style matching OnboardingContinueButton
                                 Button {
+                                    HapticManager.shared.trigger(.mediumImpact)
                                     let trimmed = editingText.trimmingCharacters(in: .whitespacesAndNewlines)
                                     if !trimmed.isEmpty {
                                         dataModel.affirmationText = trimmed
@@ -168,8 +170,11 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                                             recordingState = .idle
                                             similarity = 0.0
                                             highlightedWordIndices.removeAll()
+                                            currentWordIndex = -1  // Reset current word index
                                             hasGoodSimilarity = false
                                             capturedRecognitionText = ""
+                                            // Reset speech recognizer for new language
+                                            speechService.resetRecognizer()
                                             // Clean up any temporary recording
                                             try? FileManager.default.removeItem(at: onboardingRecordingURL)
                                             // Generate new URL for next recording
@@ -210,18 +215,18 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
             },
             mainContent: {
                 VStack(spacing: 16) {
-                    // Affirmation text
-                    HighlightedAffirmationText(
+                    // Affirmation text - using NativeTextHighlighter for proper multi-language support
+                    NativeTextHighlighter(
                         text: dataModel.affirmationText,
-                        highlightedWordIndices: highlightedWordIndices
+                        highlightedWordIndices: highlightedWordIndices,
+                        currentWordIndex: currentWordIndex
                     )
                     .padding(24)
-                    .font(.title2)
-                    .multilineTextAlignment(.center)
                     
                     // Hint text - only show in idle state
                     if recordingState == .idle {
                         Button(action: {
+                            HapticManager.shared.trigger(.lightImpact)
                             editingText = dataModel.affirmationText
                             showEditAlert = true
                             isTextEditorFocused = true
@@ -329,6 +334,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                 } else {
                     // Add affirmation flow - show Done button that dismisses
                     Button(action: {
+                        HapticManager.shared.trigger(.mediumImpact)
                         // Save recording data
                         dataModel.audioURL = onboardingRecordingURL
                         dataModel.wordTimings = wordTimings
@@ -357,6 +363,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
     private func toggleRecording() {
         switch recordingState {
         case .idle:
+            HapticManager.shared.trigger(.selection)
             startRecording()
         case .recording:
             stopRecording()
@@ -369,6 +376,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                 similarity = 0.0
                 capturedRecognitionText = ""
                 highlightedWordIndices.removeAll()
+                currentWordIndex = -1  // Reset current word index
                 hasGoodSimilarity = false
                 // Generate new URL for retry
                 onboardingRecordingURL = {
@@ -384,6 +392,10 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
         speechService.onWordRecognized = { [self] recognizedText, wordIndices in
             Task { @MainActor in
                 highlightedWordIndices = wordIndices
+                // Update current word index to the maximum recognized index
+                if let maxIndex = wordIndices.max() {
+                    currentWordIndex = maxIndex
+                }
             }
         }
     }
@@ -413,6 +425,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
             await MainActor.run {
                 recordingState = .recording
                 highlightedWordIndices.removeAll()
+                currentWordIndex = -1  // Reset current word index
                 hasGoodSimilarity = false
                 capturedRecognitionText = ""
             }
@@ -472,6 +485,12 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
             
             await MainActor.run {
                 similarity = finalSimilarity
+                // Add haptic feedback for completion
+                if finalSimilarity >= 0.8 {
+                    HapticManager.shared.trigger(.success)
+                } else {
+                    HapticManager.shared.trigger(.warning)
+                }
             }
             
             // If successful, generate word timings while still in analyzing state

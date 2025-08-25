@@ -68,7 +68,10 @@ struct RecordingButton: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            HapticManager.shared.trigger(.selection)
+            action()
+        }) {
             VStack(spacing: 8) {
                 Image(systemName: isRecording ? "stop.circle.fill" : "mic.circle.fill")
                     .font(.system(size: 80))
@@ -109,7 +112,10 @@ struct RetryButton: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            Button(action: action) {
+            Button(action: {
+                HapticManager.shared.trigger(.mediumImpact)
+                action()
+            }) {
                 Image(systemName: "arrow.clockwise.circle.fill")
                     .foregroundStyle(.purple)
                     .font(.system(size: 80))
@@ -207,7 +213,10 @@ struct PracticeCardActionButton: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        Button(action: {
+            HapticManager.shared.trigger(.mediumImpact)
+            action()
+        }) {
             HStack {
                 Image(systemName: systemImage)
                 Text(title)
