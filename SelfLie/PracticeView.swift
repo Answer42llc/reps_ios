@@ -23,8 +23,6 @@ struct PracticeView: View {
     
     // Replay functionality
     @State private var isReplaying = false
-    @State private var waveAnimationPhase = 0
-    @State private var waveAnimationTimer: Timer?
     
     // Smart recording stop
     @State private var maxRecordingTimer: Timer?
@@ -255,6 +253,7 @@ struct PracticeView: View {
         .background(Color(.secondarySystemBackground))
         .foregroundStyle(.purple)
         .clipShape(Capsule())
+        .disabled(isReplaying)
 
     }
     
@@ -319,52 +318,15 @@ struct PracticeView: View {
                 await replayOriginalAudio()
             }
         }) {
-            Image(systemName: speakerIconName)
+            Image(systemName: "speaker.wave.3.fill")
                 .font(.title2)
                 .foregroundColor(.purple)
                 .frame(width: 44, height: 44)
+                .symbolEffect(.variableColor.iterative.hideInactiveLayers, isActive: isReplaying)
         }
         .disabled(isReplaying)  // Disable button while playing
-        .onAppear {
-            startWaveAnimation()
-        }
     }
     
-    // Computed property for dynamic speaker icon
-    private var speakerIconName: String {
-        if !isReplaying {
-            return "speaker.wave.3.fill"
-        }
-        
-        // Cycle through wave states: 1 -> 2 -> 3 -> 1...
-        switch waveAnimationPhase % 3 {
-        case 0:
-            return "speaker.wave.1.fill"
-        case 1:
-            return "speaker.wave.2.fill"
-        case 2:
-            return "speaker.wave.3.fill"
-        default:
-            return "speaker.wave.3.fill"
-        }
-    }
-    
-    // Start wave animation timer
-    private func startWaveAnimation() {
-        // Clean up any existing timer
-        waveAnimationTimer?.invalidate()
-        
-        waveAnimationTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { timer in
-            if isReplaying {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    waveAnimationPhase += 1
-                }
-            } else {
-                // Reset wave phase when not playing
-                waveAnimationPhase = 0
-            }
-        }
-    }
     
     
     private func startPracticeFlow() async {
@@ -866,8 +828,6 @@ struct PracticeView: View {
         // Clean up timers
         maxRecordingTimer?.invalidate()
         maxRecordingTimer = nil
-        waveAnimationTimer?.invalidate()
-        waveAnimationTimer = nil
         
         // Clean up temporary recording file
         if verifyFileExists(at: practiceURL, context: "restart cleanup verification") {
@@ -902,8 +862,6 @@ struct PracticeView: View {
         // Clean up timers
         maxRecordingTimer?.invalidate()
         maxRecordingTimer = nil
-        waveAnimationTimer?.invalidate()
-        waveAnimationTimer = nil
         
         // Clean up temporary recording file
         if verifyFileExists(at: practiceURL, context: "cleanup verification") {
@@ -968,6 +926,7 @@ struct PracticeView: View {
                 let adjustedTime = currentTime + timeOffset
                 
                 // Note: Audio playback progress logging removed to reduce console noise
+                
                 
                 // Update current word index based on playback progress
                 let newWordIndex = NativeTextHighlighter.getWordIndexForTime(adjustedTime, wordTimings: self.wordTimings)

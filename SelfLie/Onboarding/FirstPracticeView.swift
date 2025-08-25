@@ -190,8 +190,11 @@ struct FirstPracticeView: View {
             Image(systemName: "speaker.wave.3.fill")
                 .font(.title2)
                 .foregroundColor(.purple)
+                .symbolEffect(.variableColor.iterative.hideInactiveLayers, isActive: isReplaying)
         }
+        .disabled(isReplaying)
     }
+
     
     private var cardActionArea: some View {
         Button(action: {
@@ -210,6 +213,7 @@ struct FirstPracticeView: View {
         .background(Color(.secondarySystemBackground))
         .foregroundStyle(.purple)
         .clipShape(Capsule())
+        .disabled(isReplaying)
     }
     
     @ViewBuilder
@@ -489,6 +493,7 @@ struct FirstPracticeView: View {
                 let timeOffset: TimeInterval = 0.05
                 let adjustedTime = currentTime + timeOffset
                 
+
                 // Update current word index based on playback progress
                 let newWordIndex = NativeTextHighlighter.getWordIndexForTime(adjustedTime, wordTimings: self.wordTimings)
                 
