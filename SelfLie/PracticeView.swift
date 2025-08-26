@@ -23,6 +23,7 @@ struct PracticeView: View {
     
     // Replay functionality
     @State private var isReplaying = false
+    @State private var replayWaveLevel = 1
     
     // Smart recording stop
     @State private var maxRecordingTimer: Timer?
@@ -253,7 +254,6 @@ struct PracticeView: View {
         .background(Color(.secondarySystemBackground))
         .foregroundStyle(.purple)
         .clipShape(Capsule())
-        .disabled(isReplaying)
 
     }
     
@@ -318,15 +318,23 @@ struct PracticeView: View {
                 await replayOriginalAudio()
             }
         }) {
-            Image(systemName: "speaker.wave.3.fill")
+            Image(systemName: speakerIconName)
                 .font(.title2)
                 .foregroundColor(.purple)
                 .frame(width: 44, height: 44)
-                .symbolEffect(.variableColor.iterative.hideInactiveLayers, isActive: isReplaying)
         }
         .disabled(isReplaying)  // Disable button while playing
     }
     
+    // Computed property for dynamic speaker icon
+    private var speakerIconName: String {
+        if !isReplaying { return "speaker.wave.3.fill" }
+        switch replayWaveLevel {
+        case 1: return "speaker.wave.1.fill"
+        case 2: return "speaker.wave.2.fill"
+        default: return "speaker.wave.3.fill"
+        }
+    }
     
     
     private func startPracticeFlow() async {
@@ -927,6 +935,17 @@ struct PracticeView: View {
                 
                 // Note: Audio playback progress logging removed to reduce console noise
                 
+                // Drive replay icon wave level by playback progress
+                if self.isReplaying && duration > 0 {
+                    let progress = max(0, min(1, adjustedTime / duration))
+                    if progress < 1.0/3.0 {
+                        self.replayWaveLevel = 1
+                    } else if progress < 2.0/3.0 {
+                        self.replayWaveLevel = 2
+                    } else {
+                        self.replayWaveLevel = 3
+                    }
+                }
                 
                 // Update current word index based on playback progress
                 let newWordIndex = NativeTextHighlighter.getWordIndexForTime(adjustedTime, wordTimings: self.wordTimings)
@@ -962,6 +981,8 @@ struct PracticeView: View {
                     self.highlightedWordIndices = Set(0..<self.wordTimings.count)
                     self.currentWordIndex = self.wordTimings.count - 1
                 }
+                // End icon with full waves
+                self.replayWaveLevel = 3
             }
         }
     }

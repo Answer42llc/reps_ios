@@ -168,7 +168,14 @@ struct OnboardingCompleteView: View {
     data.currentStep = 5
     data.goal = "quit smoke"
     data.reason = "smoke is smelly"
-    data.generateAffirmation()
+    Task {
+        do {
+            _ = try await data.generateAffirmationAsync()
+        } catch {
+            // Fallback to pattern-based generation for preview
+            data.generateAffirmation()
+        }
+    }
     data.practiceCount = 1
     
     return OnboardingCompleteView(onboardingData: data)

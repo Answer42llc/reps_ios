@@ -95,6 +95,8 @@ struct DefineGoalView<DataModel: AffirmationDataProtocol>: View {
         .background(Color(hex: "#f9f9f9"))
         .onAppear {
             isGoalFieldFocused = true
+            // Prewarm AI session for affirmation generation
+            dataModel.prewarmAISession()
         }
 
 

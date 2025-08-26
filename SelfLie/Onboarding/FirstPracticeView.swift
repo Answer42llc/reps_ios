@@ -575,7 +575,14 @@ struct FirstPracticeView: View {
     data.currentStep = 4
     data.goal = "quit smoke"
     data.reason = "smoke is smelly"
-    data.generateAffirmation()
+    Task {
+        do {
+            _ = try await data.generateAffirmationAsync()
+        } catch {
+            // Fallback to pattern-based generation for preview
+            data.generateAffirmation()
+        }
+    }
     data.audioURL = URL(fileURLWithPath: "/tmp/test.m4a") // Mock URL
     return FirstPracticeView(onboardingData: data)
 }

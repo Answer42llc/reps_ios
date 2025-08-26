@@ -572,12 +572,21 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
     data.currentStep = 3
     data.goal = "quit smoke"
     data.reason = "smoke is smelly"
-    data.generateAffirmation()
+    Task {
+        do {
+            _ = try await data.generateAffirmationAsync()
+        } catch {
+            // Fallback to pattern-based generation for preview
+            data.generateAffirmation()
+        }
+    }
     return SpeakAndRecordView(
         dataModel: data,
         flowType: .onboarding,
         showingAddAffirmation: .constant(false)
     )
+
+
 }
 
 #Preview("Add Affirmation") {
@@ -585,7 +594,14 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
     data.currentStep = 3
     data.goal = "quit smoke"
     data.reason = "smoke is smelly"
-    data.generateAffirmation()
+    Task {
+        do {
+            _ = try await data.generateAffirmationAsync()
+        } catch {
+            // Fallback to pattern-based generation for preview
+            data.generateAffirmation()
+        }
+    }
     return SpeakAndRecordView(
         dataModel: data,
         flowType: .addAffirmation,

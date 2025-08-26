@@ -69,6 +69,25 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
             // Bottom section with text field and navigation
             VStack(spacing: 0) {
                 Spacer()
+                
+                // Generation status indicator (when generating)
+                if dataModel.isGeneratingAffirmation {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .purple))
+                                .scaleEffect(0.8)
+                            
+                            Text(dataModel.generationStatusMessage)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fontDesign(.serif)
+                        }
+                    }
+                    .padding(.bottom, 16)
+                    .transition(.opacity.combined(with: .scale))
+                }
+                
                 // Text input area
                 HStack(spacing: 12) {
                     OnboardingTextField(
@@ -78,10 +97,25 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
                     .focused($isReasonFieldFocused)
                     
                     // Navigation arrow
-                    OnboardingArrowButton(isEnabled: isReasonValid) {
+                    OnboardingArrowButton(isEnabled: isReasonValid && !dataModel.isGeneratingAffirmation) {
                         dataModel.reason = customReason
-                        dataModel.generateAffirmation()
-                        dataModel.nextStep()
+                        
+                        // Use async generation for better AI-powered affirmations
+                        Task {
+                            do {
+                                _ = try await dataModel.generateAffirmationAsync()
+                                await MainActor.run {
+                                    dataModel.nextStep()
+                                }
+                            } catch {
+                                // Error is already handled within generateAffirmationAsync
+                                // It will use fallback generation, so we can continue
+                                await MainActor.run {
+                                    dataModel.nextStep()
+                                }
+                                print("⚠️ Affirmation generation completed with fallback: \(error.localizedDescription)")
+                            }
+                        }
                     }
                 }
                 .padding(.vertical, 4)
@@ -95,6 +129,7 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
             }
         }
         .background(Color(hex: "#f9f9f9"))
+        .animation(.easeInOut(duration: 0.3), value: dataModel.isGeneratingAffirmation)
         .onAppear {
             isReasonFieldFocused = true
         }
