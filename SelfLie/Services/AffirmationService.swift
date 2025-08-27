@@ -220,6 +220,7 @@ class AffirmationService {
     
     // MARK: - Dependencies
     private let patternGenerator = PatternBasedAffirmationGenerator()
+    private let cloudService = CloudAffirmationService()
     
     // MARK: - Session Management (following Apple's pattern)
     #if canImport(FoundationModels)
@@ -241,6 +242,7 @@ class AffirmationService {
     
     // MARK: - Configuration
     var useFoundationModelsWhenAvailable = true
+    var useCloudWhenAvailable = true
     
     // MARK: - Initialization
     
@@ -286,17 +288,32 @@ class AffirmationService {
     /// Get user-friendly availability status
     var availabilityMessage: String {
         if canUseFoundationModels {
-            return "AI generation available"
+            return "AI generation available (on-device)"
+        } else if cloudService.isAvailable {
+            return "AI generation available (cloud)"
         } else {
             #if canImport(FoundationModels)
             if #available(iOS 26.0, *) {
                 let checker = FMAvailabilityChecker()
-                return checker.getUnavailableReason()
+                let fmReason = checker.getUnavailableReason()
+                if cloudService.hasNetworkConnection {
+                    return "\(fmReason), using cloud AI"
+                } else {
+                    return "\(fmReason), no network for cloud"
+                }
             } else {
-                return "Foundation Models requires iOS 26 or later"
+                if cloudService.hasNetworkConnection {
+                    return "Using cloud AI (iOS 26+ required for on-device)"
+                } else {
+                    return "Foundation Models requires iOS 26+, no network for cloud"
+                }
             }
             #else
-            return "Foundation Models not available on this platform"
+            if cloudService.hasNetworkConnection {
+                return "Using cloud AI generation"
+            } else {
+                return "No AI available (no network)"
+            }
             #endif
         }
     }
@@ -341,12 +358,24 @@ class AffirmationService {
             throw AffirmationError.invalidInput
         }
         
-        // Choose generation strategy
+        // Choose generation strategy with three-tier fallback
+        // 1. Try Foundation Models first (best quality, on-device)
         if canUseFoundationModels && useFoundationModelsWhenAvailable {
             return try await generateWithFoundationModels(goal: goal, reason: reason)
-        } else {
-            return generateWithPattern(goal: goal, reason: reason)
         }
+        
+        // 2. Try Cloud AI as fallback (good quality, requires network)
+        if useCloudWhenAvailable && cloudService.hasNetworkConnection {
+            do {
+                return try await generateWithCloud(goal: goal, reason: reason)
+            } catch {
+                print("⚠️ [AffirmationService] Cloud generation failed, falling back to patterns: \(error)")
+                // Fall through to pattern generation
+            }
+        }
+        
+        // 3. Use pattern-based generation as final fallback (always available)
+        return generateWithPattern(goal: goal, reason: reason)
     }
     
     /// Retry generation after error
@@ -498,6 +527,26 @@ class AffirmationService {
         print("⚠️ [AffirmationService] Foundation Models not available at compile time, using pattern fallback")
         return generateWithPattern(goal: goal, reason: reason)
         #endif
+    }
+    
+    private func generateWithCloud(goal: String, reason: String) async throws -> String {
+        print("☁️ [AffirmationService] Using cloud AI generation")
+        
+        generationProgress = "Connecting to cloud AI..."
+        
+        do {
+            let result = try await cloudService.generateAffirmation(goal: goal, reason: reason)
+            generatedText = result
+            generationProgress = "Cloud generation complete"
+            
+            print("✅ [AffirmationService] Cloud AI generated: '\(result)'")
+            return result
+            
+        } catch {
+            print("❌ [AffirmationService] Cloud generation error: \(error)")
+            generationError = error as? AffirmationError ?? AffirmationError.cloudGenerationFailed(error.localizedDescription)
+            throw error
+        }
     }
     
     private func generateWithPattern(goal: String, reason: String) -> String {

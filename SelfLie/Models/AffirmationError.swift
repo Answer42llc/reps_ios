@@ -35,6 +35,12 @@ enum AffirmationError: LocalizedError, Equatable {
     case apiKeyMissing
     case rateLimitExceeded
     
+    // Cloud service specific errors
+    case cloudServiceUnavailable
+    case cloudServiceMisconfigured
+    case cloudAPIKeyInvalid
+    case cloudGenerationFailed(String)
+    
     // General errors
     case unknown(Error)
     
@@ -84,6 +90,16 @@ enum AffirmationError: LocalizedError, Equatable {
         case .rateLimitExceeded:
             return "Too many requests, please wait a moment"
             
+        // Cloud service errors
+        case .cloudServiceUnavailable:
+            return "Cloud AI service is currently unavailable"
+        case .cloudServiceMisconfigured:
+            return "Cloud service configuration error"
+        case .cloudAPIKeyInvalid:
+            return "Invalid cloud API key"
+        case .cloudGenerationFailed(let reason):
+            return "Cloud generation failed: \(reason)"
+            
         // General errors
         case .unknown(let error):
             return "An unexpected error occurred: \(error.localizedDescription)"
@@ -131,6 +147,14 @@ enum AffirmationError: LocalizedError, Equatable {
             return "Check your internet connection and try again"
         case .rateLimitExceeded:
             return "Wait a moment before trying again"
+        case .cloudServiceUnavailable:
+            return "Template-based affirmations will be used instead"
+        case .cloudServiceMisconfigured, .apiKeyMissing:
+            return "Check cloud service settings or use template-based generation"
+        case .cloudAPIKeyInvalid:
+            return "Update your API key in settings or use template-based generation"
+        case .cloudGenerationFailed:
+            return "Will use template-based generation as fallback"
         default:
             return "Please try again"
         }
@@ -141,7 +165,9 @@ enum AffirmationError: LocalizedError, Equatable {
         switch self {
         case .foundationModelsNotAvailable, .deviceNotEligible, 
              .appleIntelligenceNotEnabled, .languageNotSupported,
-             .sessionInitializationFailed, .contentSafetyViolation:
+             .sessionInitializationFailed, .contentSafetyViolation,
+             .cloudServiceUnavailable, .cloudServiceMisconfigured,
+             .cloudAPIKeyInvalid, .cloudGenerationFailed:
             return true
         case .modelNotReady, .contextOverflow, .sessionNotInitialized:
             return false // These are recoverable
@@ -216,6 +242,16 @@ extension AffirmationError {
             return "Generating a better affirmation..."
         case .contextOverflow:
             return "Starting fresh conversation..."
+        case .networkError:
+            return "No internet connection, using templates"
+        case .cloudServiceUnavailable, .cloudServiceMisconfigured:
+            return "Cloud AI unavailable, using templates"
+        case .cloudAPIKeyInvalid:
+            return "Cloud API issue, using templates"
+        case .cloudGenerationFailed:
+            return "Cloud generation failed, using templates"
+        case .rateLimitExceeded:
+            return "Too many requests, using templates"
         default:
             return "Creating affirmation..."
         }
@@ -242,9 +278,14 @@ extension AffirmationError {
              (.transcriptCorrupted, .transcriptCorrupted),
              (.networkError, .networkError),
              (.apiKeyMissing, .apiKeyMissing),
-             (.rateLimitExceeded, .rateLimitExceeded):
+             (.rateLimitExceeded, .rateLimitExceeded),
+             (.cloudServiceUnavailable, .cloudServiceUnavailable),
+             (.cloudServiceMisconfigured, .cloudServiceMisconfigured),
+             (.cloudAPIKeyInvalid, .cloudAPIKeyInvalid):
             return true
         case (.generationFailed(let lhsReason), .generationFailed(let rhsReason)):
+            return lhsReason == rhsReason
+        case (.cloudGenerationFailed(let lhsReason), .cloudGenerationFailed(let rhsReason)):
             return lhsReason == rhsReason
         case (.unknown(let lhsError), .unknown(let rhsError)):
             return lhsError.localizedDescription == rhsError.localizedDescription
