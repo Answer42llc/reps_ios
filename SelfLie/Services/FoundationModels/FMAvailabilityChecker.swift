@@ -8,11 +8,12 @@
 import Foundation
 #if canImport(FoundationModels)
 import FoundationModels
+#endif
 
 @available(iOS 26.0, *)
 @Observable
 class FMAvailabilityChecker {
-    
+#if canImport(FoundationModels)
     /// Comprehensive check for Foundation Models availability
     /// Checks system availability AND language support
     func checkAvailability() -> Bool {
@@ -75,14 +76,7 @@ class FMAvailabilityChecker {
             return .unknown
         }
     }
-}
-
 #else
-
-// Fallback implementation when FoundationModels is not available
-@Observable
-class FMAvailabilityChecker {
-    
     func checkAvailability() -> Bool {
         return false
     }
@@ -98,9 +92,10 @@ class FMAvailabilityChecker {
     func getAvailabilityStatus() -> AvailabilityStatus {
         return .deviceNotEligible
     }
+#endif
 }
 
-#endif
+
 
 enum AvailabilityStatus {
     case fullyAvailable

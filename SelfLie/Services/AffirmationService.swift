@@ -25,6 +25,37 @@ class AffirmationService {
             return "The user's locale is \(locale.identifier)."
         }
         
+        // 通用session指令，不绑定特定语言
+        static func universalInstructions() -> String {
+            let instructions = getLocaleInstructions()
+            
+            return instructions + """
+            
+            You are an expert in positive psychology and affirmation creation.
+            You can help users create affirmations and suggest reasons for their goals.
+            
+            IMPORTANT: Always respond in the same language as the user's input.
+            If the user writes in Chinese, respond in Chinese.
+            If the user writes in English, respond in English.
+            If the user writes in Spanish, respond in Spanish.
+            And so on for any language.
+            
+            For affirmations, follow these principles:
+            1. If the goal is about stopping/quitting/not doing something negative, use 'I no longer', 'I never', or 'I don't' (or equivalent in the output language)
+            2. If the goal is about achieving/doing something positive, use 'I am', 'I do', or present tense
+            3. PRESERVE the original intent - don't flip negative goals to positive statements
+            4. Keep it personal and meaningful
+            5. Make it specific and clear
+            6. Include the reason in the affirmation
+            
+            For reason suggestions:
+            1. Generate 3-4 compelling, specific reasons
+            2. Include emotional, practical, and aspirational benefits
+            3. Keep each reason short (5-10 words)
+            4. Consider both immediate and long-term benefits
+            """
+        }
+        
         // 根据检测到的语言生成系统指令
         static func systemInstructions(for detectedLanguage: NLLanguage? = nil) -> String {
             // 1. 首先使用Apple要求的特定英文短语
@@ -203,17 +234,22 @@ class AffirmationService {
             return instructions
         }
         
-        static func generationPrompt(goal: String, reason: String) -> String {
+        static func generationPrompt(goal: String, reason: String, detectedLanguage: NLLanguage) -> String {
             // Construct safe prompt to prevent injection
             let safeGoal = goal.replacingOccurrences(of: "\"", with: "'")
             let safeReason = reason.replacingOccurrences(of: "\"", with: "'")
+            
+            // Get language name for the prompt
+            let languageName = getLanguageName(for: detectedLanguage)
             
             return """
             Goal: \(safeGoal)
             Reason: \(safeReason)
             
-            IMPORTANT: Analyze the goal carefully:
-            - DO NOT convert negative goals to positive statements
+            IMPORTANT:
+            - You MUST respond in \(languageName)
+            - Analyze the goal carefully: DO NOT convert negative goals to positive statements
+            - Create a single affirmation that includes both the goal and the reason
             """
         }
         
@@ -254,19 +290,42 @@ class AffirmationService {
             return instructions
         }
         
-        static func reasonGenerationPrompt(goal: String) -> String {
+        static func reasonGenerationPrompt(goal: String, detectedLanguage: NLLanguage) -> String {
             let safeGoal = goal.replacingOccurrences(of: "\"", with: "'")
+            let languageName = getLanguageName(for: detectedLanguage)
+            
             return """
             Goal: \(safeGoal)
             
+            IMPORTANT: You MUST respond in \(languageName)
             Generate 3-4 compelling, personal reasons why someone would want to achieve this goal.
             """
+        }
+        
+        // Helper method to get human-readable language name
+        private static func getLanguageName(for language: NLLanguage) -> String {
+            switch language {
+            case .english: return "English"
+            case .simplifiedChinese, .traditionalChinese: return "Chinese"
+            case .spanish: return "Spanish"
+            case .french: return "French"
+            case .german: return "German"
+            case .japanese: return "Japanese"
+            case .korean: return "Korean"
+            case .portuguese: return "Portuguese"
+            case .italian: return "Italian"
+            case .russian: return "Russian"
+            case .arabic: return "Arabic"
+            case .hindi: return "Hindi"
+            default: return "the same language as the input"
+            }
         }
     }
     
     // MARK: - Dependencies
     private let patternGenerator = PatternBasedAffirmationGenerator()
     private let cloudService = CloudAffirmationService()
+    
     
     // MARK: - Session Management (following Apple's pattern)
     #if canImport(FoundationModels)
@@ -301,11 +360,11 @@ class AffirmationService {
         if #available(iOS 26.0, *) {
             let checker = FMAvailabilityChecker()
             if checker.checkAvailability() {
-                // 初始化时使用默认指令（不指定特定语言）
+                // Create single universal session with basic instructions
                 foundationModelsSession = LanguageModelSession(
-                    instructions: Prompts.systemInstructions()
+                    instructions: Prompts.universalInstructions()
                 )
-                print("✅ [AffirmationService] Foundation Models session created")
+                print("✅ [AffirmationService] Foundation Models universal session initialized")
                 if let session = foundationModelsSession {
                     print("📍 [AffirmationService] Session created with ID: \(ObjectIdentifier(session))")
                 }
@@ -320,7 +379,6 @@ class AffirmationService {
     var canUseFoundationModels: Bool {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, *) {
-            // Create temporary service to check availability
             let checker = FMAvailabilityChecker()
             return checker.checkAvailability()
         } else {
@@ -433,7 +491,8 @@ class AffirmationService {
         return try await generateAffirmation(goal: goal, reason: reason)
     }
     
-    /// Preemptively warm up Foundation Models session when user shows intent
+    
+    /// Preemptively warm up the universal Foundation Models session
     func prewarmSession() {
         guard canUseFoundationModels && useFoundationModelsWhenAvailable else { 
             print("📝 [AffirmationService] Using pattern generation, no prewarm needed")
@@ -452,11 +511,13 @@ class AffirmationService {
                 return
             }
             
-            print("🔥 [AffirmationService] Prewarming Foundation Models session...")
+            print("🔥 [AffirmationService] Prewarming universal Foundation Models session...")
             print("📍 [AffirmationService] Prewarming session with ID: \(ObjectIdentifier(session))")
+            
             session.prewarm()
             sessionPrewarmed = true
-            print("✅ [AffirmationService] Session prewarmed successfully")
+            
+            print("✅ [AffirmationService] Universal session prewarmed successfully")
         }
         #endif
     }
@@ -476,7 +537,7 @@ class AffirmationService {
         if canUseFoundationModels && useFoundationModelsWhenAvailable {
             do {
                 let reasons = try await generateReasonsWithFoundationModels(goal: goal)
-                print("✅ [AffirmationService] Foundation Models generated \(reasons.count) reasons")
+                print("✅ [AffirmationService] Foundation Models completed - returning \(reasons.count) reasons")
                 return reasons
             } catch {
                 print("⚠️ [AffirmationService] Foundation Models reason generation failed: \(error)")
@@ -540,13 +601,16 @@ class AffirmationService {
         let detectedLanguage = detectInputLanguage(goal: goal, reason: reason)
         print("🌐 [AffirmationService] Detected language: \(detectedLanguage.rawValue)")
         
-        // 为检测到的语言创建新的session（带有正确的语言指令）
-        let languageSpecificInstructions = Prompts.systemInstructions(for: detectedLanguage)
-        let session = LanguageModelSession(instructions: languageSpecificInstructions)
+        // 使用全局预热的session
+        guard let session = foundationModelsSession else {
+            print("❌ [AffirmationService] No Foundation Models session available")
+            return generateWithPattern(goal: goal, reason: reason)
+        }
         
-        print("📍 [AffirmationService] Created language-specific session for: \(detectedLanguage.rawValue)")
+        print("📍 [AffirmationService] Using universal session for: \(detectedLanguage.rawValue)")
+        print("📍 [AffirmationService] Session ID: \(ObjectIdentifier(session))")
         
-        let prompt = Prompts.generationPrompt(goal: goal, reason: reason)
+        let prompt = Prompts.generationPrompt(goal: goal, reason: reason, detectedLanguage: detectedLanguage)
         
         do {
             generationProgress = "Generating affirmation..."
@@ -571,12 +635,12 @@ class AffirmationService {
             generationProgress = "Complete"
             
             // Print both the generated content and language for debugging
-            print("✅ [AffirmationService] Foundation Models generated: '\(statement)'")
+            print("✅ [AffirmationService] Foundation Models generated: '\(statement)' 📍 Session ID: \(ObjectIdentifier(session))")
             print("📍 [AffirmationService] Generated in language: \(detectedLanguage.rawValue)")
             return statement
             
         } catch let error as FoundationModels.LanguageModelSession.GenerationError {
-            print("❌ [AffirmationService] Foundation Models error: \(error)")
+            print("❌ [AffirmationService] Foundation Models error: \(error) 📍 Session ID: \(ObjectIdentifier(session))")
             
             // Handle specific Foundation Models errors
             switch error {
@@ -600,12 +664,12 @@ class AffirmationService {
             }
             
         } catch let error as AffirmationValidationError {
-            print("❌ [AffirmationService] Validation error: \(error)")
+            print("❌ [AffirmationService] Validation error: \(error) 📍 Session ID: \(ObjectIdentifier(session))")
             generationError = AffirmationError.contentValidationFailed
             return generateWithPattern(goal: goal, reason: reason)
             
         } catch {
-            print("❌ [AffirmationService] Unexpected error: \(error)")
+            print("❌ [AffirmationService] Unexpected error: \(error) 📍 Session ID: \(ObjectIdentifier(session))")
             generationError = AffirmationError.generationFailed(error.localizedDescription)
             return generateWithPattern(goal: goal, reason: reason)
         }
@@ -662,11 +726,16 @@ class AffirmationService {
         let detectedLanguage = detectInputLanguage(goal: goal, reason: "")
         print("🌐 [AffirmationService] Detected language for reasons: \(detectedLanguage.rawValue)")
         
-        // Create language-specific session
-        let languageSpecificInstructions = Prompts.reasonGenerationInstructions(for: detectedLanguage)
-        let session = LanguageModelSession(instructions: languageSpecificInstructions)
+        // 使用全局预热的session
+        guard let session = foundationModelsSession else {
+            print("❌ [AffirmationService] No Foundation Models session available")
+            throw AffirmationError.foundationModelsNotAvailable
+        }
         
-        let prompt = Prompts.reasonGenerationPrompt(goal: goal)
+        print("📍 [AffirmationService] Using universal session for reasons: \(detectedLanguage.rawValue)")
+        print("📍 [AffirmationService] Session ID: \(ObjectIdentifier(session))")
+        
+        let prompt = Prompts.reasonGenerationPrompt(goal: goal, detectedLanguage: detectedLanguage)
         
         do {
             let response = try await session.respond(
@@ -680,11 +749,11 @@ class AffirmationService {
             // Validate suggestions
             try suggestions.validate()
             
-            print("✅ [AffirmationService] Foundation Models generated reasons: \(suggestions.reasons)")
+            print("✅ [AffirmationService] Foundation Models generated reasons: \(suggestions.reasons) 📍 Session ID: \(ObjectIdentifier(session))")
             return suggestions.reasons
             
         } catch {
-            print("❌ [AffirmationService] Foundation Models reason error: \(error)")
+            print("❌ [AffirmationService] Foundation Models reason error: \(error) 📍 Session ID: \(ObjectIdentifier(session))")
             throw error
         }
         #else
