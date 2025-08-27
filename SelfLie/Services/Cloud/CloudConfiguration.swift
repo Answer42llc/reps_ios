@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import NaturalLanguage
 
 /// Configuration for cloud-based AI generation services
 struct CloudConfiguration {
@@ -175,6 +176,66 @@ extension CloudConfiguration {
         Reason: \(reason)
         
         Create a single affirmation statement for this goal. Remember to output JSON format only.
+        """
+    }
+    
+    /// Generate system prompt for reason suggestions based on language
+    static func reasonSuggestionsSystemPrompt(language: NLLanguage) -> String {
+        var languageInstruction = "You MUST respond in "
+        
+        switch language {
+        case .simplifiedChinese, .traditionalChinese:
+            languageInstruction += "Chinese."
+        case .spanish:
+            languageInstruction += "Spanish."
+        case .french:
+            languageInstruction += "French."
+        case .german:
+            languageInstruction += "German."
+        case .japanese:
+            languageInstruction += "Japanese."
+        case .korean:
+            languageInstruction += "Korean."
+        default:
+            languageInstruction += "English."
+        }
+        
+        return """
+        You are an expert in psychology and personal development.
+        \(languageInstruction)
+        
+        You MUST respond in JSON format with the following structure:
+        {
+            "reasons": ["reason1", "reason2", "reason3", "reason4"],
+            "language": "language code"
+        }
+        
+        Generate 3-4 compelling reasons why someone would want to achieve their goal.
+        RULES:
+        1. Make reasons specific and personal
+        2. Include emotional, practical, and aspirational benefits
+        3. Keep each reason short (5-10 words)
+        4. Avoid generic or cliché reasons
+        5. Consider both immediate and long-term benefits
+        
+        Example responses:
+        {
+            "reasons": ["save money for family", "breathe easier", "live longer", "smell fresh"],
+            "language": "en"
+        }
+        {
+            "reasons": ["为家人省钱", "呼吸更顺畅", "活得更久", "身上没有烟味"],
+            "language": "zh"
+        }
+        """
+    }
+    
+    /// Generate user prompt for reason suggestions
+    static func reasonSuggestionsUserPrompt(goal: String) -> String {
+        return """
+        Goal: \(goal)
+        
+        Generate 3-4 compelling reasons why someone would want to achieve this goal. Remember to output JSON format only.
         """
     }
 }

@@ -19,6 +19,10 @@ class AddAffirmationData: AffirmationDataProtocol {
     var wordTimings: [WordTiming] = []
     var isRecordingComplete = false
     
+    // Reason suggestions state
+    var reasonSuggestions: [String] = []
+    var isGeneratingReasons = false
+    
     // Unified affirmation service (handles both Foundation Models and pattern-based generation)
     private let affirmationService = AffirmationService()
     
@@ -120,5 +124,26 @@ class AddAffirmationData: AffirmationDataProtocol {
         print("🔥 [AddAffirmationData] Starting prewarm session...")
         affirmationService.prewarmSession()
         print("✅ [AddAffirmationData] Prewarm session completed")
+    }
+    
+    /// Generate reason suggestions for the current goal
+    func generateReasonSuggestions() async {
+        guard !goal.isEmpty else {
+            print("⚠️ [AddAffirmationData] Cannot generate reasons for empty goal")
+            reasonSuggestions = []
+            return
+        }
+        
+        print("🎯 [AddAffirmationData] Starting reason generation for goal: '\(goal)'")
+        isGeneratingReasons = true
+        
+        defer { isGeneratingReasons = false }
+        
+        let suggestions = await affirmationService.generateReasonSuggestions(goal: goal)
+        
+        await MainActor.run {
+            reasonSuggestions = suggestions
+            print("✅ [AddAffirmationData] Generated \(suggestions.count) reason suggestions")
+        }
     }
 }

@@ -138,6 +138,59 @@ class CloudAffirmationService {
         return try await generateAffirmation(goal: goal, reason: reason)
     }
     
+    /// Generate reason suggestions for a goal using cloud AI
+    func generateReasonSuggestions(goal: String) async throws -> [String] {
+        // Check prerequisites
+        guard hasNetworkConnection else {
+            throw AffirmationError.networkError
+        }
+        
+        guard isAvailable else {
+            throw AffirmationError.cloudServiceUnavailable
+        }
+        
+        // Update state
+        isGenerating = true
+        generationProgress = "Connecting to cloud AI for reasons..."
+        lastError = nil
+        
+        defer {
+            isGenerating = false
+            generationProgress = "idle"
+        }
+        
+        do {
+            // Detect language for better generation
+            let detectedLanguage = detectLanguage(from: goal)
+            
+            generationProgress = "Generating reason suggestions..."
+            
+            // Call API with retry logic
+            let jsonResponse = try await performWithRetry {
+                try await self.apiClient.generateReasonSuggestions(goal: goal, language: detectedLanguage)
+            }
+            
+            generationProgress = "Processing suggestions..."
+            
+            // Parse JSON response
+            let reasons = try extractReasonsFromJSON(jsonResponse)
+            
+            generationProgress = "Complete"
+            
+            print("☁️ [CloudAffirmationService] Generated \(reasons.count) reason suggestions")
+            print("🌐 [CloudAffirmationService] Language: \(detectedLanguage.rawValue)")
+            
+            return reasons
+            
+        } catch {
+            lastError = error
+            print("❌ [CloudAffirmationService] Reason generation failed: \(error)")
+            
+            // Convert to appropriate AffirmationError
+            throw mapToAffirmationError(error)
+        }
+    }
+    
     // MARK: - Private Methods
     
     private func setupNetworkMonitoring() {
@@ -204,6 +257,60 @@ class CloudAffirmationService {
             }
             
             throw AffirmationError.cloudGenerationFailed("Unable to parse affirmation from response")
+        }
+    }
+    
+    private func extractReasonsFromJSON(_ jsonString: String) throws -> [String] {
+        guard let data = jsonString.data(using: .utf8) else {
+            print("❌ [CloudAffirmationService] Failed to convert response to data")
+            throw AffirmationError.cloudGenerationFailed("Invalid response format")
+        }
+        
+        // Try to parse JSON response
+        do {
+            // Define structure for reason response
+            struct ReasonResponse: Codable {
+                let reasons: [String]
+                let language: String?
+            }
+            
+            let response = try JSONDecoder().decode(ReasonResponse.self, from: data)
+            
+            print("📊 [CloudAffirmationService] Parsed JSON - Reasons: \(response.reasons.count), Language: \(response.language ?? "unknown")")
+            
+            return response.reasons
+        } catch {
+            // If JSON parsing fails, try to extract from plain text
+            print("⚠️ [CloudAffirmationService] Failed to parse JSON, trying plain text extraction")
+            
+            // Try to extract bullet points or numbered list
+            let lines = jsonString.components(separatedBy: .newlines)
+            var reasons: [String] = []
+            
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Look for bullet points, numbers, or dashes
+                if trimmed.hasPrefix("-") || trimmed.hasPrefix("•") || trimmed.hasPrefix("*") {
+                    let reason = trimmed.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !reason.isEmpty && reason.count > 3 {
+                        reasons.append(String(reason))
+                    }
+                } else if let firstChar = trimmed.first, firstChar.isNumber {
+                    // Handle numbered lists like "1. reason" or "1) reason"
+                    if let dotRange = trimmed.firstIndex(of: ".") ?? trimmed.firstIndex(of: ")") {
+                        let reason = trimmed[trimmed.index(after: dotRange)...].trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !reason.isEmpty && reason.count > 3 {
+                            reasons.append(String(reason))
+                        }
+                    }
+                }
+            }
+            
+            guard !reasons.isEmpty else {
+                throw AffirmationError.cloudGenerationFailed("Unable to parse reasons from response")
+            }
+            
+            return reasons
         }
     }
     

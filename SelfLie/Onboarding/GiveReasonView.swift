@@ -14,11 +14,21 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
     }
     
     private var presetReasons: [String] {
-        // Mock data for now - will be dynamic later
-        if dataModel.goal.lowercased().contains("smoke") {
-            return ["Smoke is smelly", "Girls don't like it"]
+        // Use dynamically generated suggestions if available
+        if !dataModel.reasonSuggestions.isEmpty {
+            return dataModel.reasonSuggestions
+        }
+        
+        // Fallback to basic suggestions if generation hasn't completed or failed
+        let goalLower = dataModel.goal.lowercased()
+        if goalLower.contains("smoke") || goalLower.contains("烟") {
+            return ["save money", "breathe easier", "smell fresh", "live longer"]
+        } else if goalLower.contains("exercise") || goalLower.contains("锻炼") {
+            return ["boost energy", "improve mood", "sleep better", "build strength"]
+        } else if goalLower.contains("porn") || goalLower.contains("色情") {
+            return ["better relationships", "more productive", "improved focus", "self-control"]
         } else {
-            return ["It makes me feel good", "It's the right thing to do"]
+            return ["feel better", "improve life", "achieve goals", "be happier"]
         }
     }
     
@@ -46,14 +56,28 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
                             .fontWeight(.medium)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         
-                        // Preset buttons
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(presetReasons, id: \.self) { reason in
-                                HStack {
-                                    OnboardingPresetButton(title: reason) {
-                                        customReason = reason
+                        // Loading indicator or preset buttons
+                        if dataModel.isGeneratingReasons {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .purple))
+                                    .scaleEffect(0.8)
+                                Text("Generating personalized suggestions...")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .fontDesign(.serif)
+                            }
+                            .padding(.vertical, 8)
+                        } else {
+                            // Preset buttons
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(presetReasons, id: \.self) { reason in
+                                    HStack {
+                                        OnboardingPresetButton(title: reason) {
+                                            customReason = reason
+                                        }
+                                        Spacer()
                                     }
-                                    Spacer()
                                 }
                             }
                         }

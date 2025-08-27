@@ -216,6 +216,52 @@ class AffirmationService {
             - DO NOT convert negative goals to positive statements
             """
         }
+        
+        static func reasonGenerationInstructions(for detectedLanguage: NLLanguage? = nil) -> String {
+            // Start with locale instructions
+            var instructions = getLocaleInstructions()
+            
+            // Add language-specific instructions (reuse logic from systemInstructions)
+            if let language = detectedLanguage {
+                switch language {
+                case .english:
+                    instructions += " You MUST respond in English."
+                case .simplifiedChinese, .traditionalChinese:
+                    instructions += " You MUST respond in Chinese."
+                default:
+                    instructions += " You MUST respond in the same language as the user's input."
+                }
+            }
+            
+            // Add reason generation specific instructions
+            instructions += """
+            
+            Generate 3-4 compelling reasons why someone would want to achieve this goal.
+            ALWAYS follow these principles:
+            1. Make reasons specific and personal
+            2. Include emotional, practical, and aspirational benefits
+            3. Keep each reason short (5-10 words)
+            4. Avoid generic or cliché reasons
+            5. Consider both immediate and long-term benefits
+            
+            Examples:
+            - Goal: quit smoking → ["save money for family", "breathe easier", "live longer for loved ones", "smell fresh"]
+            - Goal: 戒烟 → ["为家人省钱", "呼吸更顺畅", "为爱的人活得更久", "身上没有烟味"]
+            - Goal: exercise daily → ["boost energy levels", "improve mood", "build confidence", "sleep better"]
+            - Goal: 每天锻炼 → ["提升能量水平", "改善心情", "增强自信", "睡眠更好"]
+            """
+            
+            return instructions
+        }
+        
+        static func reasonGenerationPrompt(goal: String) -> String {
+            let safeGoal = goal.replacingOccurrences(of: "\"", with: "'")
+            return """
+            Goal: \(safeGoal)
+            
+            Generate 3-4 compelling, personal reasons why someone would want to achieve this goal.
+            """
+        }
     }
     
     // MARK: - Dependencies
@@ -415,6 +461,47 @@ class AffirmationService {
         #endif
     }
     
+    /// Generate reason suggestions for a goal
+    func generateReasonSuggestions(goal: String) async -> [String] {
+        print("🎯 [AffirmationService] Generating reason suggestions for goal: '\(goal)'")
+        
+        // Validate input
+        guard !goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            print("⚠️ [AffirmationService] Empty goal, returning default reasons")
+            return generatePatternBasedReasons(goal: goal)
+        }
+        
+        // Three-tier fallback strategy
+        // 1. Try Foundation Models first (best quality, on-device)
+        if canUseFoundationModels && useFoundationModelsWhenAvailable {
+            do {
+                let reasons = try await generateReasonsWithFoundationModels(goal: goal)
+                print("✅ [AffirmationService] Foundation Models generated \(reasons.count) reasons")
+                return reasons
+            } catch {
+                print("⚠️ [AffirmationService] Foundation Models reason generation failed: \(error)")
+                // Fall through to cloud
+            }
+        }
+        
+        // 2. Try Cloud AI as fallback (good quality, requires network)
+        if useCloudWhenAvailable && cloudService.hasNetworkConnection {
+            do {
+                let reasons = try await generateReasonsWithCloud(goal: goal)
+                print("✅ [AffirmationService] Cloud AI generated \(reasons.count) reasons")
+                return reasons
+            } catch {
+                print("⚠️ [AffirmationService] Cloud reason generation failed: \(error)")
+                // Fall through to pattern-based
+            }
+        }
+        
+        // 3. Use pattern-based generation as final fallback (always available)
+        let reasons = generatePatternBasedReasons(goal: goal)
+        print("✅ [AffirmationService] Pattern-based generated \(reasons.count) reasons")
+        return reasons
+    }
+    
     // MARK: - Private Implementation
     
     private func resetState() {
@@ -558,6 +645,144 @@ class AffirmationService {
         
         print("✅ [AffirmationService] Pattern-based generated: '\(result)'")
         return result
+    }
+    
+    // MARK: - Reason Generation Methods
+    
+    private func generateReasonsWithFoundationModels(goal: String) async throws -> [String] {
+        #if canImport(FoundationModels)
+        print("🤖 [AffirmationService] Using Foundation Models for reason generation")
+        
+        guard #available(iOS 26.0, *) else {
+            print("⚠️ [AffirmationService] Foundation Models requires iOS 26.0+")
+            throw AffirmationError.foundationModelsNotAvailable
+        }
+        
+        // Detect input language
+        let detectedLanguage = detectInputLanguage(goal: goal, reason: "")
+        print("🌐 [AffirmationService] Detected language for reasons: \(detectedLanguage.rawValue)")
+        
+        // Create language-specific session
+        let languageSpecificInstructions = Prompts.reasonGenerationInstructions(for: detectedLanguage)
+        let session = LanguageModelSession(instructions: languageSpecificInstructions)
+        
+        let prompt = Prompts.reasonGenerationPrompt(goal: goal)
+        
+        do {
+            let response = try await session.respond(
+                to: prompt,
+                generating: FMReasonSuggestions.self,
+                options: GenerationOptions(temperature: 0.3)
+            )
+            
+            let suggestions = response.content
+            
+            // Validate suggestions
+            try suggestions.validate()
+            
+            print("✅ [AffirmationService] Foundation Models generated reasons: \(suggestions.reasons)")
+            return suggestions.reasons
+            
+        } catch {
+            print("❌ [AffirmationService] Foundation Models reason error: \(error)")
+            throw error
+        }
+        #else
+        throw AffirmationError.foundationModelsNotAvailable
+        #endif
+    }
+    
+    private func generateReasonsWithCloud(goal: String) async throws -> [String] {
+        print("☁️ [AffirmationService] Using cloud AI for reason generation")
+        
+        do {
+            let reasons = try await cloudService.generateReasonSuggestions(goal: goal)
+            print("✅ [AffirmationService] Cloud AI generated reasons: \(reasons)")
+            return reasons
+        } catch {
+            print("❌ [AffirmationService] Cloud reason generation error: \(error)")
+            throw error
+        }
+    }
+    
+    private func generatePatternBasedReasons(goal: String) -> [String] {
+        print("📝 [AffirmationService] Using pattern-based reason generation")
+        
+        let goalLower = goal.lowercased()
+        
+        // Detect language for localized reasons
+        let detectedLanguage = detectInputLanguage(goal: goal, reason: "")
+        let isChinese = detectedLanguage == .simplifiedChinese || detectedLanguage == .traditionalChinese
+        
+        // Generate contextual reasons based on goal patterns
+        if goalLower.contains("quit") || goalLower.contains("stop") || goalLower.contains("戒") || goalLower.contains("停止") {
+            return generateQuitReasons(goal: goalLower, isChinese: isChinese)
+        } else if goalLower.contains("exercise") || goalLower.contains("workout") || goalLower.contains("gym") || goalLower.contains("锻炼") || goalLower.contains("运动") {
+            return generateExerciseReasons(isChinese: isChinese)
+        } else if goalLower.contains("sleep") || goalLower.contains("rest") || goalLower.contains("睡眠") || goalLower.contains("休息") {
+            return generateSleepReasons(isChinese: isChinese)
+        } else if goalLower.contains("confident") || goalLower.contains("confidence") || goalLower.contains("自信") {
+            return generateConfidenceReasons(isChinese: isChinese)
+        } else if goalLower.contains("read") || goalLower.contains("study") || goalLower.contains("learn") || goalLower.contains("阅读") || goalLower.contains("学习") {
+            return generateLearningReasons(isChinese: isChinese)
+        } else if goalLower.contains("weight") || goalLower.contains("diet") || goalLower.contains("减肥") || goalLower.contains("饮食") {
+            return generateWeightReasons(isChinese: isChinese)
+        } else {
+            return generateGenericReasons(goal: goalLower, isChinese: isChinese)
+        }
+    }
+    
+    // Helper methods for pattern-based reason generation
+    private func generateQuitReasons(goal: String, isChinese: Bool) -> [String] {
+        if goal.contains("smoke") || goal.contains("烟") {
+            return isChinese ? 
+                ["为家人的健康着想", "省下更多钱", "呼吸更顺畅", "身上没有烟味"] :
+                ["save money for family", "breathe easier", "smell fresh", "live longer"]
+        } else if goal.contains("porn") || goal.contains("色情") {
+            return isChinese ?
+                ["拥有更健康的关系", "提升自我控制力", "节省更多时间", "提高专注力"] :
+                ["healthier relationships", "better self-control", "more productive time", "improved focus"]
+        } else {
+            return isChinese ?
+                ["更健康的生活", "更好的自控力", "节省时间和金钱", "提升生活质量"] :
+                ["healthier lifestyle", "better self-control", "save time and money", "improve life quality"]
+        }
+    }
+    
+    private func generateExerciseReasons(isChinese: Bool) -> [String] {
+        return isChinese ?
+            ["提升能量水平", "改善心情", "增强体质", "睡眠更好"] :
+            ["boost energy levels", "improve mood", "build strength", "sleep better"]
+    }
+    
+    private func generateSleepReasons(isChinese: Bool) -> [String] {
+        return isChinese ?
+            ["提高专注力", "增强免疫力", "心情更好", "精力充沛"] :
+            ["better focus", "stronger immune system", "improved mood", "more energy"]
+    }
+    
+    private func generateConfidenceReasons(isChinese: Bool) -> [String] {
+        return isChinese ?
+            ["抓住更多机会", "建立更好的关系", "实现个人目标", "感觉更快乐"] :
+            ["seize more opportunities", "build better relationships", "achieve goals", "feel happier"]
+    }
+    
+    private func generateLearningReasons(isChinese: Bool) -> [String] {
+        return isChinese ?
+            ["扩展知识面", "提升思维能力", "获得新技能", "个人成长"] :
+            ["expand knowledge", "sharpen thinking", "gain new skills", "personal growth"]
+    }
+    
+    private func generateWeightReasons(isChinese: Bool) -> [String] {
+        return isChinese ?
+            ["更有活力", "提升自信", "穿衣更好看", "身体更健康"] :
+            ["more energy", "boost confidence", "clothes fit better", "healthier body"]
+    }
+    
+    private func generateGenericReasons(goal: String, isChinese: Bool) -> [String] {
+        return isChinese ?
+            ["实现个人目标", "提升生活质量", "变得更好", "感到满足"] :
+            ["achieve personal goals", "improve quality of life", "become better", "feel fulfilled"]
     }
 }
 

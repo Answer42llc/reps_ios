@@ -17,6 +17,10 @@ protocol AffirmationDataProtocol: AnyObject, Observable {
     var wordTimings: [WordTiming] { get set }
     var progress: Double { get }
     
+    // Reason suggestions
+    var reasonSuggestions: [String] { get set }
+    var isGeneratingReasons: Bool { get }
+    
     // Foundation Models generation state
     var isGeneratingAffirmation: Bool { get }
     var generationError: AffirmationError? { get }
@@ -32,6 +36,9 @@ protocol AffirmationDataProtocol: AnyObject, Observable {
     func generateAffirmationAsync() async throws -> String
     func retryGeneration() async throws
     func prewarmAISession()
+    
+    // Reason generation
+    func generateReasonSuggestions() async
     
     func nextStep()
     func reset()

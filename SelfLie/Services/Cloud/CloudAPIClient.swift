@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import NaturalLanguage
 
 /// Client for communicating with cloud AI services
 class CloudAPIClient {
@@ -199,6 +200,57 @@ class CloudAPIClient {
         }
     }
     
+    /// Generate reason suggestions for a goal using cloud AI
+    func generateReasonSuggestions(goal: String, language: NLLanguage) async throws -> String {
+        // Check configuration
+        guard configuration.isValid else {
+            throw APIError.invalidConfiguration
+        }
+        
+        // Apply rate limiting
+        try await enforceRateLimit()
+        
+        // Create request for reason generation
+        let request = createReasonSuggestionsRequest(goal: goal, language: language)
+        let urlRequest = try createURLRequest(for: request)
+        
+        // Track timing for analytics
+        let startTime = Date()
+        
+        do {
+            // Perform request
+            let (data, response) = try await session.data(for: urlRequest)
+            
+            // Check response status
+            if let httpResponse = response as? HTTPURLResponse {
+                try validateHTTPResponse(httpResponse, data: data)
+            }
+            
+            // Decode response
+            let chatResponse = try decodeResponse(data)
+            
+            // Extract reasons text
+            guard let firstChoice = chatResponse.choices.first,
+                  !firstChoice.message.content.isEmpty else {
+                throw APIError.noData
+            }
+            
+            // Log analytics if enabled
+            if CloudConfiguration.enableAnalytics {
+                logAnalytics(success: true, responseTime: Date().timeIntervalSince(startTime))
+            }
+            
+            return firstChoice.message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+        } catch {
+            // Log analytics for failures
+            if CloudConfiguration.enableAnalytics {
+                logAnalytics(success: false, responseTime: Date().timeIntervalSince(startTime), error: error)
+            }
+            throw error
+        }
+    }
+    
     /// Check if cloud API is available (performs a lightweight test)
     func checkAvailability() async -> Bool {
         guard configuration.isValid else { return false }
@@ -240,6 +292,26 @@ class CloudAPIClient {
             messages: [systemMessage, userMessage],
             temperature: CloudConfiguration.temperature,
             maxTokens: CloudConfiguration.maxTokens,
+            responseFormat: ResponseFormat.jsonObject
+        )
+    }
+    
+    private func createReasonSuggestionsRequest(goal: String, language: NLLanguage) -> ChatCompletionRequest {
+        let systemMessage = Message(
+            role: "system",
+            content: CloudConfiguration.reasonSuggestionsSystemPrompt(language: language)
+        )
+        
+        let userMessage = Message(
+            role: "user",
+            content: CloudConfiguration.reasonSuggestionsUserPrompt(goal: goal)
+        )
+        
+        return ChatCompletionRequest(
+            model: configuration.model,
+            messages: [systemMessage, userMessage],
+            temperature: 0.3, // Lower temperature for more consistent suggestions
+            maxTokens: 150, // Shorter response for just reasons
             responseFormat: ResponseFormat.jsonObject
         )
     }

@@ -37,6 +37,34 @@ extension FMAffirmation {
     }
 }
 
+@available(iOS 26.0, *)
+@Generable
+struct FMReasonSuggestions: Equatable {
+    @Guide(description: "3-4 contextual, compelling reasons why someone would want to achieve this goal (provide exactly 3 or 4)")
+    let reasons: [String]
+    
+    @Guide(description: "The goal being addressed, for context")
+    let contextualGoal: String
+}
+
+@available(iOS 26.0, *)
+extension FMReasonSuggestions {
+    /// Validate reason suggestions
+    func validate() throws {
+        guard !contextualGoal.isEmpty else {
+            throw ReasonValidationError.emptyGoal
+        }
+        
+        guard reasons.count >= 3 && reasons.count <= 4 else {
+            throw ReasonValidationError.invalidReasonCount
+        }
+        
+        guard reasons.allSatisfy({ !$0.isEmpty }) else {
+            throw ReasonValidationError.emptyReasons
+        }
+    }
+}
+
 #else
 // Fallback implementation for pre-iOS 26 or without FoundationModels
 struct FMAffirmation: Equatable {
@@ -46,6 +74,16 @@ struct FMAffirmation: Equatable {
     init(statement: String, alternatives: [String]) {
         self.statement = statement
         self.alternatives = alternatives
+    }
+}
+
+struct FMReasonSuggestions: Equatable {
+    let reasons: [String]
+    let contextualGoal: String
+    
+    init(reasons: [String], contextualGoal: String) {
+        self.reasons = reasons
+        self.contextualGoal = contextualGoal
     }
 }
 #endif
@@ -65,6 +103,23 @@ enum AffirmationValidationError: LocalizedError {
             return "Invalid alternative phrasings"
         case .containsNegativeLanguage:
             return "Affirmation contains negative language"
+        }
+    }
+}
+
+enum ReasonValidationError: LocalizedError {
+    case emptyGoal
+    case invalidReasonCount
+    case emptyReasons
+    
+    var errorDescription: String? {
+        switch self {
+        case .emptyGoal:
+            return "Goal context is empty"
+        case .invalidReasonCount:
+            return "Must provide 3-4 reason suggestions"
+        case .emptyReasons:
+            return "Reason suggestions cannot be empty"
         }
     }
 }

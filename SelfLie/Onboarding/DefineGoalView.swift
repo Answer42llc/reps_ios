@@ -77,6 +77,12 @@ struct DefineGoalView<DataModel: AffirmationDataProtocol>: View {
                     // Navigation arrow
                     OnboardingArrowButton(isEnabled: isGoalValid) {
                         dataModel.goal = customGoal
+                        
+                        // Generate reason suggestions in the background
+                        Task {
+                            await dataModel.generateReasonSuggestions()
+                        }
+                        
                         dataModel.nextStep()
                     }
                 }
