@@ -465,7 +465,12 @@ class AffirmationService {
         // Choose generation strategy with three-tier fallback
         // 1. Try Foundation Models first (best quality, on-device)
         if canUseFoundationModels && useFoundationModelsWhenAvailable {
-            return try await generateWithFoundationModels(goal: goal, reason: reason)
+            do {
+                return try await generateWithFoundationModels(goal: goal, reason: reason)
+            } catch {
+                print("⚠️ [AffirmationService] Foundation Models failed, falling back to cloud: \(error)")
+                // Fall through to try cloud AI
+            }
         }
         
         // 2. Try Cloud AI as fallback (good quality, requires network)
@@ -604,7 +609,7 @@ class AffirmationService {
         // 使用全局预热的session
         guard let session = foundationModelsSession else {
             print("❌ [AffirmationService] No Foundation Models session available")
-            return generateWithPattern(goal: goal, reason: reason)
+            throw AffirmationError.foundationModelsNotAvailable
         }
         
         print("📍 [AffirmationService] Using universal session for: \(detectedLanguage.rawValue)")
@@ -647,36 +652,36 @@ class AffirmationService {
             case .exceededContextWindowSize:
                 // For our single-round generation, this shouldn't happen, but fallback
                 generationError = AffirmationError.contextOverflow
-                return generateWithPattern(goal: goal, reason: reason)
+                throw generationError!
                 
             case .guardrailViolation:
                 // Content safety issue, use fallback
                 generationError = AffirmationError.contentSafetyViolation
-                return generateWithPattern(goal: goal, reason: reason)
+                throw generationError!
                 
             case .unsupportedLanguageOrLocale:
                 generationError = AffirmationError.languageNotSupported
-                return generateWithPattern(goal: goal, reason: reason)
+                throw generationError!
                 
             default:
                 generationError = AffirmationError.generationFailed(error.localizedDescription)
-                return generateWithPattern(goal: goal, reason: reason)
+                throw generationError!
             }
             
         } catch let error as AffirmationValidationError {
             print("❌ [AffirmationService] Validation error: \(error) 📍 Session ID: \(ObjectIdentifier(session))")
             generationError = AffirmationError.contentValidationFailed
-            return generateWithPattern(goal: goal, reason: reason)
+            throw generationError!
             
         } catch {
             print("❌ [AffirmationService] Unexpected error: \(error) 📍 Session ID: \(ObjectIdentifier(session))")
             generationError = AffirmationError.generationFailed(error.localizedDescription)
-            return generateWithPattern(goal: goal, reason: reason)
+            throw generationError!
         }
         #else
-        // Foundation Models not available at compile time - use pattern fallback
-        print("⚠️ [AffirmationService] Foundation Models not available at compile time, using pattern fallback")
-        return generateWithPattern(goal: goal, reason: reason)
+        // Foundation Models not available at compile time - throw exception
+        print("⚠️ [AffirmationService] Foundation Models not available at compile time")
+        throw AffirmationError.foundationModelsNotAvailable
         #endif
     }
     
