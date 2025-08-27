@@ -8,13 +8,215 @@
 
 import SwiftUI
 import Foundation
+import NaturalLanguage
 #if canImport(FoundationModels)
 import FoundationModels
+import Playgrounds
 #endif
 
 @MainActor
 @Observable
 class AffirmationService {
+    
+    // MARK: - Prompts (Public prompts for reuse by other models)
+    struct Prompts {
+        // Apple官方推荐的获取locale指令的方法
+        static func getLocaleInstructions(for locale: Locale = Locale.current) -> String {
+            return "The user's locale is \(locale.identifier)."
+        }
+        
+        // 根据检测到的语言生成系统指令
+        static func systemInstructions(for detectedLanguage: NLLanguage? = nil) -> String {
+            // 1. 首先使用Apple要求的特定英文短语
+            var instructions = getLocaleInstructions()
+            
+            // 2. 根据检测到的语言添加强制性输出语言指令
+            if let language = detectedLanguage {
+                switch language {
+                // European Languages
+                case .english:
+                    instructions += " You MUST respond in English."
+                case .spanish:
+                    instructions += " You MUST respond in Spanish and be mindful of Spanish vocabulary and cultural context."
+                case .portuguese:
+                    instructions += " You MUST respond in Portuguese and be mindful of Portuguese vocabulary and cultural context."
+                case .french:
+                    instructions += " You MUST respond in French and be mindful of French vocabulary and cultural context."
+                case .italian:
+                    instructions += " You MUST respond in Italian and be mindful of Italian vocabulary and cultural context."
+                case .german:
+                    instructions += " You MUST respond in German and be mindful of German vocabulary and cultural context."
+                case .dutch:
+                    instructions += " You MUST respond in Dutch and be mindful of Dutch vocabulary and cultural context."
+                case .swedish:
+                    instructions += " You MUST respond in Swedish and be mindful of Swedish vocabulary and cultural context."
+                case .norwegian:
+                    instructions += " You MUST respond in Norwegian and be mindful of Norwegian vocabulary and cultural context."
+                case .danish:
+                    instructions += " You MUST respond in Danish and be mindful of Danish vocabulary and cultural context."
+                case .finnish:
+                    instructions += " You MUST respond in Finnish and be mindful of Finnish vocabulary and cultural context."
+                case .russian:
+                    instructions += " You MUST respond in Russian and be mindful of Russian vocabulary and cultural context."
+                case .polish:
+                    instructions += " You MUST respond in Polish and be mindful of Polish vocabulary and cultural context."
+                case .ukrainian:
+                    instructions += " You MUST respond in Ukrainian and be mindful of Ukrainian vocabulary and cultural context."
+                case .czech:
+                    instructions += " You MUST respond in Czech and be mindful of Czech vocabulary and cultural context."
+                case .croatian:
+                    instructions += " You MUST respond in Croatian and be mindful of Croatian vocabulary and cultural context."
+                case .romanian:
+                    instructions += " You MUST respond in Romanian and be mindful of Romanian vocabulary and cultural context."
+                case .greek:
+                    instructions += " You MUST respond in Greek and be mindful of Greek vocabulary and cultural context."
+                case .bulgarian:
+                    instructions += " You MUST respond in Bulgarian and be mindful of Bulgarian vocabulary and cultural context."
+                case .catalan:
+                    instructions += " You MUST respond in Catalan and be mindful of Catalan vocabulary and cultural context."
+                case .hungarian:
+                    instructions += " You MUST respond in Hungarian and be mindful of Hungarian vocabulary and cultural context."
+                case .slovak:
+                    instructions += " You MUST respond in Slovak and be mindful of Slovak vocabulary and cultural context."
+                case .icelandic:
+                    instructions += " You MUST respond in Icelandic and be mindful of Icelandic vocabulary and cultural context."
+                    
+                // Asian Languages
+                case .simplifiedChinese, .traditionalChinese:
+                    instructions += " You MUST respond in Chinese and be mindful of Chinese vocabulary and cultural context."
+                case .japanese:
+                    instructions += " You MUST respond in Japanese and be mindful of Japanese vocabulary and cultural context."
+                case .korean:
+                    instructions += " You MUST respond in Korean and be mindful of Korean vocabulary and cultural context."
+                case .thai:
+                    instructions += " You MUST respond in Thai and be mindful of Thai vocabulary and cultural context."
+                case .vietnamese:
+                    instructions += " You MUST respond in Vietnamese and be mindful of Vietnamese vocabulary and cultural context."
+                case .burmese:
+                    instructions += " You MUST respond in Burmese and be mindful of Burmese vocabulary and cultural context."
+                case .khmer:
+                    instructions += " You MUST respond in Khmer and be mindful of Khmer vocabulary and cultural context."
+                case .lao:
+                    instructions += " You MUST respond in Lao and be mindful of Lao vocabulary and cultural context."
+                case .indonesian:
+                    instructions += " You MUST respond in Indonesian and be mindful of Indonesian vocabulary and cultural context."
+                case .malay:
+                    instructions += " You MUST respond in Malay and be mindful of Malay vocabulary and cultural context."
+                case .mongolian:
+                    instructions += " You MUST respond in Mongolian and be mindful of Mongolian vocabulary and cultural context."
+                case .kazakh:
+                    instructions += " You MUST respond in Kazakh and be mindful of Kazakh vocabulary and cultural context."
+                case .tibetan:
+                    instructions += " You MUST respond in Tibetan and be mindful of Tibetan vocabulary and cultural context."
+                case .sinhalese:
+                    instructions += " You MUST respond in Sinhalese and be mindful of Sinhalese vocabulary and cultural context."
+                    
+                // Indian Languages
+                case .hindi:
+                    instructions += " You MUST respond in Hindi and be mindful of Hindi vocabulary and cultural context."
+                case .bengali:
+                    instructions += " You MUST respond in Bengali and be mindful of Bengali vocabulary and cultural context."
+                case .punjabi:
+                    instructions += " You MUST respond in Punjabi and be mindful of Punjabi vocabulary and cultural context."
+                case .gujarati:
+                    instructions += " You MUST respond in Gujarati and be mindful of Gujarati vocabulary and cultural context."
+                case .oriya:
+                    instructions += " You MUST respond in Oriya and be mindful of Oriya vocabulary and cultural context."
+                case .kannada:
+                    instructions += " You MUST respond in Kannada and be mindful of Kannada vocabulary and cultural context."
+                case .malayalam:
+                    instructions += " You MUST respond in Malayalam and be mindful of Malayalam vocabulary and cultural context."
+                case .tamil:
+                    instructions += " You MUST respond in Tamil and be mindful of Tamil vocabulary and cultural context."
+                case .telugu:
+                    instructions += " You MUST respond in Telugu and be mindful of Telugu vocabulary and cultural context."
+                case .marathi:
+                    instructions += " You MUST respond in Marathi and be mindful of Marathi vocabulary and cultural context."
+                    
+                // Middle Eastern Languages  
+                case .arabic:
+                    instructions += " You MUST respond in Arabic and be mindful of Arabic vocabulary and cultural context."
+                case .hebrew:
+                    instructions += " You MUST respond in Hebrew and be mindful of Hebrew vocabulary and cultural context."
+                case .persian:
+                    instructions += " You MUST respond in Persian and be mindful of Persian vocabulary and cultural context."
+                case .urdu:
+                    instructions += " You MUST respond in Urdu and be mindful of Urdu vocabulary and cultural context."
+                case .turkish:
+                    instructions += " You MUST respond in Turkish and be mindful of Turkish vocabulary and cultural context."
+                    
+                // Other Languages
+                case .amharic:
+                    instructions += " You MUST respond in Amharic and be mindful of Amharic vocabulary and cultural context."
+                case .georgian:
+                    instructions += " You MUST respond in Georgian and be mindful of Georgian vocabulary and cultural context."
+                case .armenian:
+                    instructions += " You MUST respond in Armenian and be mindful of Armenian vocabulary and cultural context."
+                case .cherokee:
+                    instructions += " You MUST respond in Cherokee and be mindful of Cherokee vocabulary and cultural context."
+                    
+                // Special cases
+                case .undetermined:
+                    // Fall back to user's locale or input language
+                    let locale = Locale.current
+                    if locale.identifier.hasPrefix("zh") {
+                        instructions += " You MUST respond in Chinese."
+                    } else {
+                        instructions += " You MUST respond in the same language as the user's input."
+                    }
+                    
+                // Default case for any unknown or future languages
+                default:
+                    instructions += " You MUST respond in the same language as the user's input."
+                }
+            } else {
+                // 如果未检测到语言，使用用户的locale
+                let locale = Locale.current
+                if locale.identifier.hasPrefix("zh") {
+                    instructions += " You MUST respond in Chinese."
+                } else {
+                    instructions += " You MUST respond in the same language as the user's input."
+                }
+            }
+            
+            // 3. 添加affirmation生成的具体指令
+            instructions += """
+            
+            Please help me write a self-affirmation statement that directly addresses the goal.
+            ALWAYS follow these principles:
+            1. If the goal is about stopping/quitting/not doing something negative, use 'I no longer', 'I never', or 'I don't' (or equivalent in the output language) as I haven't have these negative things or habits at all.
+            2. If the goal is about achieving/doing something positive, use 'I am', 'I do', or present tense
+            3. PRESERVE the original intent - don't flip negative goals to positive statements
+            4. Keep it personal and meaningful
+            5. Make it specific and clear
+            6. You MUST include the reason in the affirmation
+            
+            Examples:
+            - Goal: quit smoking, Reason: it's unhealthy → 'I never smoke because it's unhealthy'
+            - Goal: stop doubting myself, Reason: it limits my potential → 'I no longer doubt myself because it limits my potential'
+            - Goal: 不再怀疑自己, Reason: 这会限制我的潜力 → '我从不怀疑自己，因为这会限制我的潜力'
+            - Goal: 戒烟, Reason: 对健康不好 → '我从不吸烟，因为这对健康不好'
+            - Goal: exercise daily, Reason: it makes me feel energetic → 'I exercise daily because it makes me feel energetic'
+            - Goal: 每天锻炼, Reason: 让我充满活力 → '我每天锻炼，因为这让我充满活力'
+            """
+            
+            return instructions
+        }
+        
+        static func generationPrompt(goal: String, reason: String) -> String {
+            // Construct safe prompt to prevent injection
+            let safeGoal = goal.replacingOccurrences(of: "\"", with: "'")
+            let safeReason = reason.replacingOccurrences(of: "\"", with: "'")
+            
+            return """
+            Goal: \(safeGoal)
+            Reason: \(safeReason)
+            
+            IMPORTANT: Analyze the goal carefully:
+            - DO NOT convert negative goals to positive statements
+            """
+        }
+    }
     
     // MARK: - Dependencies
     private let patternGenerator = PatternBasedAffirmationGenerator()
@@ -51,41 +253,10 @@ class AffirmationService {
         if #available(iOS 26.0, *) {
             let checker = FMAvailabilityChecker()
             if checker.checkAvailability() {
-                let instructions = """
-                You are an expert affirmation coach specializing in positive psychology and habit formation.
-                
-                Your expertise includes:
-                - Creating powerful, first-person affirmations
-                - Understanding psychological principles of belief change
-                - Crafting statements that support behavior modification
-                
-                IMPORTANT RULES for affirmations:
-                1. Always use first-person, present-tense language ("I am", "I have", "I choose")
-                2. Focus on positive outcomes, never use negative words (no, not, never, can't, won't, don't)
-                3. Be specific and actionable rather than vague
-                4. Make statements believable and achievable
-                5. Support psychological well-being and healthy habits
-                6. Keep statements concise (10-20 words ideal)
-                7. Create empowering, motivating language
-                
-                NEVER create affirmations that:
-                - Use negative language or words
-                - Make unrealistic promises
-                - Could be harmful or dangerous
-                - Are overly generic or meaningless
-                
-                Examples of GOOD affirmations:
-                - "I choose healthy foods that nourish my body"
-                - "I am becoming stronger through my daily actions"
-                - "I have the power to create positive change in my life"
-                
-                Examples of BAD affirmations:
-                - "I never eat junk food" (uses "never")
-                - "I am not a smoker" (uses negative language)
-                - "I am perfect in every way" (unrealistic)
-                """
-                
-                foundationModelsSession = LanguageModelSession(instructions: instructions)
+                // 初始化时使用默认指令（不指定特定语言）
+                foundationModelsSession = LanguageModelSession(
+                    instructions: Prompts.systemInstructions()
+                )
                 print("✅ [AffirmationService] Foundation Models session created")
                 if let session = foundationModelsSession {
                     print("📍 [AffirmationService] Session created with ID: \(ObjectIdentifier(session))")
@@ -224,6 +395,12 @@ class AffirmationService {
         generationProgress = "idle"
     }
     
+    private func detectInputLanguage(goal: String, reason: String) -> NLLanguage {
+        let combinedText = "\(goal) \(reason)"
+        let result = LanguageDetector.detectLanguage(from: combinedText)
+        return result.language
+    }
+    
     private func validateInput(goal: String, reason: String) -> Bool {
         let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -234,7 +411,7 @@ class AffirmationService {
                trimmedReason.count >= 2
     }
     
-    private func generateWithFoundationModels(goal: String, reason: String) async throws -> String {
+    func generateWithFoundationModels(goal: String, reason: String) async throws -> String {
         #if canImport(FoundationModels)
         print("🤖 [AffirmationService] Using Foundation Models generation")
         
@@ -243,26 +420,17 @@ class AffirmationService {
             return generateWithPattern(goal: goal, reason: reason)
         }
         
-        guard let session = foundationModelsSession else {
-            print("⚠️ [AffirmationService] No Foundation Models session available, using pattern fallback")
-            return generateWithPattern(goal: goal, reason: reason)
-        }
+        // 检测输入语言
+        let detectedLanguage = detectInputLanguage(goal: goal, reason: reason)
+        print("🌐 [AffirmationService] Detected language: \(detectedLanguage.rawValue)")
         
-        print("📍 [AffirmationService] Using session for generation with ID: \(ObjectIdentifier(session))")
+        // 为检测到的语言创建新的session（带有正确的语言指令）
+        let languageSpecificInstructions = Prompts.systemInstructions(for: detectedLanguage)
+        let session = LanguageModelSession(instructions: languageSpecificInstructions)
         
-        // Construct safe prompt to prevent injection
-        let safeGoal = goal.replacingOccurrences(of: "\"", with: "'")
-        let safeReason = reason.replacingOccurrences(of: "\"", with: "'")
+        print("📍 [AffirmationService] Created language-specific session for: \(detectedLanguage.rawValue)")
         
-        let prompt = """
-        Create a personalized affirmation for someone with this goal and reason:
-        
-        Goal: \(safeGoal)
-        Reason: \(safeReason)
-        
-        Make the affirmation powerful, personal, and psychologically effective.
-        Focus on positive transformation and empowerment.
-        """
+        let prompt = Prompts.generationPrompt(goal: goal, reason: reason)
         
         do {
             generationProgress = "Generating affirmation..."
@@ -272,6 +440,7 @@ class AffirmationService {
             let response = try await session.respond(
                 to: prompt,
                 generating: FMAffirmation.self,
+                options: GenerationOptions(temperature: 0)
             )
             
             let affirmation = response.content
@@ -285,9 +454,9 @@ class AffirmationService {
             generatedText = statement
             generationProgress = "Complete"
             
-            // Print both the generated content and session ID for debugging
+            // Print both the generated content and language for debugging
             print("✅ [AffirmationService] Foundation Models generated: '\(statement)'")
-            print("📍 [AffirmationService] Generated by session ID: \(ObjectIdentifier(session))")
+            print("📍 [AffirmationService] Generated in language: \(detectedLanguage.rawValue)")
             return statement
             
         } catch let error as FoundationModels.LanguageModelSession.GenerationError {
@@ -444,3 +613,4 @@ private class PatternBasedAffirmationGenerator {
         return templates.randomElement() ?? templates[0]
     }
 }
+

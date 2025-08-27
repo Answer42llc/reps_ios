@@ -146,7 +146,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                             HStack(spacing: 12) {
                                 // Cancel button - secondary style
                                 Button {
-                                    HapticManager.shared.trigger(.lightImpact)
+                                    HapticManager.shared.trigger(.impact(.light))
                                     showEditAlert = false
                                     editingText = dataModel.affirmationText // Reset
                                 } label: {
@@ -161,7 +161,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                                 
                                 // Done button - primary style matching OnboardingContinueButton
                                 Button {
-                                    HapticManager.shared.trigger(.mediumImpact)
+                                    HapticManager.shared.trigger(.impact(.medium))
                                     let trimmed = editingText.trimmingCharacters(in: .whitespacesAndNewlines)
                                     if !trimmed.isEmpty {
                                         dataModel.affirmationText = trimmed
@@ -226,7 +226,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                     // Hint text - only show in idle state
                     if recordingState == .idle {
                         Button(action: {
-                            HapticManager.shared.trigger(.lightImpact)
+                            HapticManager.shared.trigger(.impact(.light))
                             editingText = dataModel.affirmationText
                             showEditAlert = true
                             isTextEditorFocused = true
@@ -334,7 +334,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                 } else {
                     // Add affirmation flow - show Done button that dismisses
                     Button(action: {
-                        HapticManager.shared.trigger(.mediumImpact)
+                        HapticManager.shared.trigger(.impact(.medium))
                         // Save recording data
                         dataModel.audioURL = onboardingRecordingURL
                         dataModel.wordTimings = wordTimings
