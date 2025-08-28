@@ -152,7 +152,7 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
                 .padding(.horizontal, 16)
             }
         }
-        .background(Color(hex: "#f9f9f9"))
+        .background(Color(UIColor.systemGroupedBackground))
         .animation(.easeInOut(duration: 0.3), value: dataModel.isGeneratingAffirmation)
         .onAppear {
             isReasonFieldFocused = true

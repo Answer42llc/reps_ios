@@ -35,7 +35,7 @@ struct RecordingView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color(hex: "#f9f9f9")
+            Color(UIColor.systemGroupedBackground)
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
@@ -113,7 +113,7 @@ struct RecordingView: View {
                 if currentSimilarity >= 0.8 && !hasGoodSimilarity {
                     hasGoodSimilarity = true
                     print("🎯 Good similarity achieved: \(currentSimilarity)")
-                    monitorSilenceForSmartStop()
+                    monitorSpeechTimeoutForSmartStop()
                 }
             }
         }
@@ -406,16 +406,19 @@ struct RecordingView: View {
         showingError = true
     }
     
-    private func monitorSilenceForSmartStop() {
-        // Set up silence detection callback for smart stop
-        speechService.onSilenceDetected = { isSilent in
-            if isSilent && self.hasGoodSimilarity && self.recordingState == .recording {
-                print("🤫 Silence detected with good similarity - stopping recording")
+    private func monitorSpeechTimeoutForSmartStop() {
+        // Set up speech timeout detection callback for smart stop
+        speechService.onSpeechTimeout = {
+            if self.hasGoodSimilarity && self.recordingState == .recording {
+                print("⏰ Speech timeout detected with good similarity - stopping recording")
                 DispatchQueue.main.async {
                     self.stopRecording()
                 }
             }
         }
+        
+        // Start speech timeout monitoring
+        speechService.startSpeechTimeoutMonitoring()
     }
     
     private func cleanup() {

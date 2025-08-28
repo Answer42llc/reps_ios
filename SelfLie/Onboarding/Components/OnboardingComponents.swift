@@ -21,7 +21,7 @@ struct CapsuleBorderButtonStyle: ButtonStyle {
             .padding(.vertical, 8)
             .background(
                 Capsule()
-                    .fill(Color.white)
+                    .fill(Color(UIColor.secondarySystemBackground))
             )
             .overlay(
                 Capsule()

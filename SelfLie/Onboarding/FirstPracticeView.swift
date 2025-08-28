@@ -110,7 +110,7 @@ struct FirstPracticeView: View {
         VStack(spacing: 0) {
             cardContent
         }
-        .background(Color.white)
+        .background(Color(UIColor.systemBackground))
         .cornerRadius(12)
         .padding(.horizontal)
     }

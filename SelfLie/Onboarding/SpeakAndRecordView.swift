@@ -47,7 +47,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
     var body: some View {
         ZStack {
             // Background color
-            Color(hex: "#f9f9f9")
+            Color(UIColor.systemGroupedBackground)
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {
@@ -134,7 +134,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                                 .fontDesign(.serif)
                                 .frame(minHeight: 100, maxHeight: 150)
                                 .padding(12)
-                                .background(Color.white)
+                                .background(Color(UIColor.secondarySystemBackground))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(Color.purple.opacity(0.3), lineWidth: 1)
@@ -197,7 +197,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                             }
                         }
                         .padding(24)
-                        .background(Color(hex: "#f9f9f9"))
+                        .background(Color(UIColor.systemGroupedBackground))
                         .cornerRadius(12)
                         .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 10)
                         .padding(.horizontal, 30)
@@ -241,7 +241,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                             .padding(.vertical, 10)
                             .background(
                                 Capsule()
-                                    .fill(Color(hex: "f9f9f9"))
+                                    .fill(Color(UIColor.systemGroupedBackground))
                             )
                         }
                     }

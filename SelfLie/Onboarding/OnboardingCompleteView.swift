@@ -18,7 +18,7 @@ struct OnboardingCompleteView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color(hex: "#f9f9f9")
+            Color(UIColor.systemGroupedBackground)
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {

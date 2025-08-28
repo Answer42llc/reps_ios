@@ -10,7 +10,7 @@ struct AddAffirmationContainerView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color(hex: "#f9f9f9")
+            Color(UIColor.systemGroupedBackground)
                 .ignoresSafeArea()
             
             // Child view content
