@@ -29,6 +29,12 @@ class SpeechService: NSObject {
     var onAudioLevelUpdate: ((Float) -> Void)?
     var onSilenceDetected: ((Bool) -> Void)?
     
+    // Speech timeout monitoring (replaces silence detection for recording stop)
+    private var lastRecognizedTextTime: Date?
+    private var speechTimeoutTimer: Timer?
+    private let speechTimeoutDuration: TimeInterval = 2.5
+    var onSpeechTimeout: (() -> Void)?
+    
     // Universal text unit recognition callbacks
     var onWordRecognized: ((String, Set<Int>) -> Void)?
     var recognizedWords: Set<Int> = []
@@ -198,6 +204,9 @@ class SpeechService: NSObject {
         
         print("🛑 [SpeechService] Stopping speech recognition")
         
+        // Stop speech timeout monitoring
+        stopSpeechTimeoutMonitoring()
+        
         // Stop the audio engine first
         if audioEngine.isRunning {
             audioEngine.stop()
@@ -246,8 +255,18 @@ class SpeechService: NSObject {
         let recognizedText = result.bestTranscription.formattedString
         print("🎤 [SpeechService] Processing recognition: '\(recognizedText)'")
         
+        // Check if this is new text recognition (for speech timeout tracking)
+        let isNewText = recognizedText != accumulatedRecognizedText && !recognizedText.isEmpty
+        
         // Update accumulated recognized text
         accumulatedRecognizedText = recognizedText
+        
+        // Track speech timeout: reset timer when new text is recognized
+        if isNewText {
+            lastRecognizedTextTime = Date()
+            print("⏰ [SpeechService] New text recognized, resetting speech timeout timer")
+            resetSpeechTimeoutTimer()
+        }
         
         // Calculate sequential highlight indices
         let highlightIndices = calculateHighlightIndices(
@@ -511,6 +530,50 @@ class SpeechService: NSObject {
         isSilent = false
         silenceStartTime = nil
         currentAudioLevel = -100.0
+    }
+    
+    // MARK: - Speech Timeout Management
+    
+    /// Start monitoring for speech timeout (when no new text is recognized for specified duration)
+    func startSpeechTimeoutMonitoring() {
+        stopSpeechTimeoutMonitoring() // Clear any existing timer
+        lastRecognizedTextTime = Date()
+        
+        print("⏰ [SpeechService] Starting speech timeout monitoring (timeout: \(speechTimeoutDuration)s)")
+        
+        speechTimeoutTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.checkSpeechTimeout()
+        }
+    }
+    
+    /// Stop speech timeout monitoring
+    func stopSpeechTimeoutMonitoring() {
+        speechTimeoutTimer?.invalidate()
+        speechTimeoutTimer = nil
+        lastRecognizedTextTime = nil
+        print("⏰ [SpeechService] Stopped speech timeout monitoring")
+    }
+    
+    /// Reset the speech timeout timer (called when new text is recognized)
+    private func resetSpeechTimeoutTimer() {
+        // Timer continues running, but we update the last recognized time
+        // The checkSpeechTimeout method will use this updated time
+        if speechTimeoutTimer != nil {
+            print("⏰ [SpeechService] Speech timeout timer reset - new text detected")
+        }
+    }
+    
+    /// Check if speech timeout has occurred
+    private func checkSpeechTimeout() {
+        guard let lastTextTime = lastRecognizedTextTime else { return }
+        
+        let timeSinceLastText = Date().timeIntervalSince(lastTextTime)
+        
+        if timeSinceLastText >= speechTimeoutDuration {
+            print("⏰ [SpeechService] Speech timeout triggered - no new text for \(String(format: "%.1f", timeSinceLastText))s")
+            stopSpeechTimeoutMonitoring()
+            onSpeechTimeout?()
+        }
     }
     
     private func processAudioLevel(from buffer: AVAudioPCMBuffer) {

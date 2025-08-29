@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C93BBAAD2E600E6F000BDF6C /* SwiftData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C93BBAAC2E600E6F000BDF6C /* SwiftData.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		C99174E72E2A417600D8C8A7 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		C93BBAAC2E600E6F000BDF6C /* SwiftData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftData.framework; path = System/Library/Frameworks/SwiftData.framework; sourceTree = SDKROOT; };
 		C99174D92E2A417400D8C8A7 /* SelfLie.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SelfLie.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C99174E62E2A417600D8C8A7 /* SelfLieTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SelfLieTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C99174F02E2A417600D8C8A7 /* SelfLieUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SelfLieUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,6 +70,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C93BBAAD2E600E6F000BDF6C /* SwiftData.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -85,12 +91,21 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C93BBAAB2E600E6F000BDF6C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				C93BBAAC2E600E6F000BDF6C /* SwiftData.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		C99174D02E2A417400D8C8A7 = {
 			isa = PBXGroup;
 			children = (
 				C99174DB2E2A417400D8C8A7 /* SelfLie */,
 				C99174E92E2A417600D8C8A7 /* SelfLieTests */,
 				C99174F32E2A417600D8C8A7 /* SelfLieUITests */,
+				C93BBAAB2E600E6F000BDF6C /* Frameworks */,
 				C99174DA2E2A417400D8C8A7 /* Products */,
 			);
 			sourceTree = "<group>";

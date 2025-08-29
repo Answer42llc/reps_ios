@@ -8,7 +8,7 @@ struct OnboardingContainerView: View {
         NavigationStack {
             ZStack {
                 // Background color
-                Color(hex: "#f9f9f9")
+                Color(UIColor.systemGroupedBackground)
                     .ignoresSafeArea()
                 
                 // Child view content

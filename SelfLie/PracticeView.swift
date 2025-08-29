@@ -4,6 +4,7 @@ import CoreData
 struct PracticeView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     
     let affirmation: Affirmation
     
@@ -69,7 +70,7 @@ struct PracticeView: View {
     var body: some View {
         ZStack {
             // Background color
-            Color(red: 0.976, green: 0.976, blue: 0.976) // #f9f9f9
+            Color(UIColor.systemGroupedBackground) // Adapts to dark/light mode
                 .ignoresSafeArea()
             
             // Top section with close button
@@ -159,7 +160,7 @@ struct PracticeView: View {
             // Card content will go here
             cardContent
         }
-        .background(Color.white)
+        .background(colorScheme == .dark ? Color(UIColor.secondarySystemBackground) : Color(UIColor.systemBackground))
         .cornerRadius(12)
         .padding(.horizontal)
     }

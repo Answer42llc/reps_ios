@@ -1,4 +1,12 @@
 //
+//  FMAffirmation.swift
+//  SelfLie
+//
+//  Created by lw on 8/28/25.
+//
+
+
+//
 //  AffirmationGenerable.swift
 //  SelfLie
 //

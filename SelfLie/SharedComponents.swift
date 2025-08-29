@@ -56,7 +56,7 @@ struct OnboardingAffirmationCard: View {
             .padding(.vertical, 32)
         }
         .frame(maxWidth: .infinity)
-        .background(Color.white)
+        .background(Color(UIColor.secondarySystemBackground))
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 2)
     }
@@ -151,7 +151,7 @@ struct PracticeCardView<StatusContent: View, MainContent: View, ActionContent: V
             .padding(24)
             .frame(maxWidth: .infinity)  // Ensure full width
         }
-        .background(Color.white)
+        .background(Color(UIColor.systemBackground))
         .cornerRadius(12)
         .padding(.horizontal)
     }

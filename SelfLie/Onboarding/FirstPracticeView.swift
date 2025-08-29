@@ -44,7 +44,7 @@ struct FirstPracticeView: View {
     var body: some View {
         ZStack {
             // Background color (same as PracticeView)
-            Color(red: 0.976, green: 0.976, blue: 0.976) // #f9f9f9
+            Color(UIColor.systemGroupedBackground) // Adapts to dark/light mode
                 .ignoresSafeArea()
             
             VStack(spacing: 0) {

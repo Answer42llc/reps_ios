@@ -7,7 +7,7 @@ SelfLie is a habit reinforcement app that helps users build or quit habits throu
 ## Technical Requirements
 
 ### iOS Version & Frameworks
-- **Target**: iOS 16+ minimum (for NavigationStack and latest SwiftUI features)
+- **Target**: iOS 17+ minimum (for NavigationStack and latest SwiftUI features)
 - **Language**: Swift with SwiftUI
 - **Navigation**: NavigationStack (not deprecated NavigationView)
 - **State Management**: @Observable macro (iOS 17+) with MVVM architecture
@@ -1444,14 +1444,3 @@ func generateWithLanguageSupport(goal: String, userLocale: Locale) async throws 
 5. **Respect Language Limits**: Check locale support before generation
 6. **Optimize Context Size**: Manage transcript length to prevent overflow
 7. **Prewarm Responsibly**: Balance performance with resource usage
-
-### Implementation Checklist for SelfLie
-
-- [ ] Implement availability checking before using Foundation Models
-- [ ] Add proper error handling for all Foundation Models operations
-- [ ] Create fallback affirmation system for unsupported scenarios
-- [ ] Implement session prewarming for better user experience
-- [ ] Add content validation for generated affirmations
-- [ ] Handle context overflow with proper transcript management
-- [ ] Support graceful degradation when models unavailable
-- [ ] Implement proper language/locale checking

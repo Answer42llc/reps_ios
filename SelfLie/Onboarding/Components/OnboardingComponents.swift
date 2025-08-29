@@ -16,7 +16,7 @@ struct CapsuleBorderButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body)
-            .foregroundColor(.black)
+            .foregroundColor(.primary)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
             .background(

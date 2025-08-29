@@ -16,14 +16,6 @@ struct ContentView: View {
     private let debugMode = true
     
     var body: some View {
-        EmptyView()
-            .onAppear {
-                // For debugging: automatically reset onboarding on each app launch
-                if debugMode {
-                    print("🔧 Debug mode: Resetting onboarding flag")
-                    hasCompletedOnboarding = false
-                }
-            }
         if hasCompletedOnboarding {
             // Show main app after onboarding is complete
             NavigationStack(path: $navigationCoordinator.path) {
@@ -35,7 +27,23 @@ struct ContentView: View {
                         }
                     }
             }
+            .toolbar {
+               ToolbarItem(placement: .principal) {
+                    Text("My Title")
+                        .font(.subheadline)
+                        .fontDesign(.serif)
+               }
+            }
             .environment(navigationCoordinator)
+            .preferredColorScheme(nil) // Respect system setting
+            .tint(.purple) // Set the tint color for navigation elements
+            .onAppear {
+                // For debugging: Skip onboarding to test main view
+                if debugMode {
+                    print("🔧 Debug mode: Skipping onboarding")
+                    hasCompletedOnboarding = true
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 // Debug button to reset onboarding
                 if debugMode {
