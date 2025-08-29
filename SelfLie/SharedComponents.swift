@@ -133,6 +133,8 @@ struct PracticeCardView<StatusContent: View, MainContent: View, ActionContent: V
     @ViewBuilder let actionContent: ActionContent
     let showActionArea: Bool
     
+    @Environment(\.colorScheme) private var colorScheme
+    
     var body: some View {
         VStack(spacing: 0) {
             // Card content
@@ -151,7 +153,7 @@ struct PracticeCardView<StatusContent: View, MainContent: View, ActionContent: V
             .padding(24)
             .frame(maxWidth: .infinity)  // Ensure full width
         }
-        .background(Color(UIColor.systemBackground))
+        .background(colorScheme == .dark ? Color(UIColor.secondarySystemBackground) : Color(UIColor.systemBackground))
         .cornerRadius(12)
         .padding(.horizontal)
     }

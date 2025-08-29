@@ -27,16 +27,7 @@ struct ContentView: View {
                         }
                     }
             }
-            .toolbar {
-               ToolbarItem(placement: .principal) {
-                    Text("My Title")
-                        .font(.subheadline)
-                        .fontDesign(.serif)
-               }
-            }
             .environment(navigationCoordinator)
-            .preferredColorScheme(nil) // Respect system setting
-            .tint(.purple) // Set the tint color for navigation elements
             .onAppear {
                 // For debugging: Skip onboarding to test main view
                 if debugMode {

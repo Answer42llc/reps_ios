@@ -41,7 +41,7 @@ struct OnboardingCompleteView: View {
                         .font(.system(size: 64))
                         .fontWeight(.bold)
                         .italic()
-                        .foregroundColor(.black)
+                        .foregroundColor(.primary)
                 }
                 .padding(.top, 96)
                 
