@@ -540,7 +540,7 @@ class AudioSessionManager {
     private func setupAudioSession() {
         do {
             // playAndRecord 场景使用正确的音频选项组合
-            let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetooth]
+            let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
             
             try audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
             // Allow haptic feedback during recording (critical for PracticeView)
@@ -667,7 +667,7 @@ class AudioSessionManager {
                 
                 do {
                     // playAndRecord 场景使用固定的正确选项组合
-                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetooth]
+                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
                     
                     // Reconfigure the session with appropriate options
                     try self.audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
@@ -726,7 +726,7 @@ class AudioSessionManager {
     
     func getAudioSessionOptions(hasBluetoothDevice: Bool) -> AVAudioSession.CategoryOptions {
         // playAndRecord 场景始终使用相同的选项组合
-        return [.defaultToSpeaker, .allowBluetooth]
+        return [.defaultToSpeaker, .allowBluetoothHFP]
     }
     
     /// Ensure the audio session is active (session is already configured in init)
@@ -847,7 +847,7 @@ class AudioSessionManager {
                 
                 do {
                     // Reconfigure without deactivating - maintains audio control
-                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetooth]
+                    let audioOptions: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .allowBluetoothHFP]
                     
                     try self.audioSession.setCategory(.playAndRecord, mode: .default, options: audioOptions)
                     // 关键：重配置后也要保持录音期间允许触觉

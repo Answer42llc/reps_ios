@@ -23,15 +23,7 @@ struct SelfLieApp: App {
 
             let appearance = UINavigationBarAppearance()
             
-            if #available(iOS 26.0, *) {
-                appearance.configureWithDefaultBackground()
-            } else {
-                appearance.configureWithOpaqueBackground()
-            }
-
-                        
-            // 去除底部边框（阴影）
-            appearance.shadowColor = .clear
+            appearance.configureWithTransparentBackground()
 
 
             appearance.largeTitleTextAttributes = [

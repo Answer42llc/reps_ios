@@ -17,7 +17,7 @@ struct CloudConfiguration {
     static let defaultAPIEndpoint = "https://gateway.ai.cloudflare.com/v1/a0ad899a5847234934db5c6a4647a764/1/openrouter/v1/chat/completions"
     
     /// Default model to use for generation
-    static let defaultModel = "mistralai/mistral-small-3.2-24b-instruct:free"
+    static let defaultModel = "mistralai/mistral-small-3.2-24b-instruct"
     
     /// Request timeout in seconds
     static let requestTimeout: TimeInterval = 30.0

@@ -217,6 +217,12 @@ class CloudAffirmationService {
     }
     
     private func extractAffirmationFromJSON(_ jsonString: String) throws -> String {
+        // 🐛 DEBUG: Print the raw JSON response for debugging
+        print("🔍 [CloudAffirmationService] Raw JSON response for affirmation:")
+        print("📋 [CloudAffirmationService] Response length: \(jsonString.count) characters")
+        print("📄 [CloudAffirmationService] Raw content: \(jsonString)")
+        print("🔍 [CloudAffirmationService] --- End of raw response ---")
+        
         guard let data = jsonString.data(using: .utf8) else {
             print("❌ [CloudAffirmationService] Failed to convert response to data")
             throw AffirmationError.cloudGenerationFailed("Invalid response format")
@@ -231,8 +237,8 @@ class CloudAffirmationService {
             return response.affirmation
         } catch {
             // If JSON parsing fails, log the raw response for debugging
-            print("❌ [CloudAffirmationService] Failed to parse JSON response: \(jsonString)")
-            print("❌ [CloudAffirmationService] Parse error: \(error)")
+            print("❌ [CloudAffirmationService] Failed to parse JSON response")
+            print("❌ [CloudAffirmationService] JSON parse error: \(error)")
             
             // Try to extract affirmation from plain text as fallback
             // This handles cases where the API might not support JSON mode
@@ -261,6 +267,12 @@ class CloudAffirmationService {
     }
     
     private func extractReasonsFromJSON(_ jsonString: String) throws -> [String] {
+        // 🐛 DEBUG: Print the raw JSON response for debugging
+        print("🔍 [CloudAffirmationService] Raw JSON response for reasons:")
+        print("📋 [CloudAffirmationService] Response length: \(jsonString.count) characters")
+        print("📄 [CloudAffirmationService] Raw content: \(jsonString)")
+        print("🔍 [CloudAffirmationService] --- End of raw response ---")
+        
         guard let data = jsonString.data(using: .utf8) else {
             print("❌ [CloudAffirmationService] Failed to convert response to data")
             throw AffirmationError.cloudGenerationFailed("Invalid response format")
@@ -282,6 +294,7 @@ class CloudAffirmationService {
         } catch {
             // If JSON parsing fails, try to extract from plain text
             print("⚠️ [CloudAffirmationService] Failed to parse JSON, trying plain text extraction")
+            print("❌ [CloudAffirmationService] JSON parse error: \(error)")
             
             // Try to extract bullet points or numbered list
             let lines = jsonString.components(separatedBy: .newlines)
