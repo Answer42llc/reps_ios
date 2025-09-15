@@ -7,11 +7,12 @@
 
 import SwiftUI
 import CoreData
+import UserNotifications
 
 @main
 struct SelfLieApp: App {
     let persistenceController = PersistenceController.shared
-    
+
     init() {
         // 获取 serif 风格的大标题字体
         if let descriptor = UIFontDescriptor
@@ -47,6 +48,11 @@ struct SelfLieApp: App {
             navBar.standardAppearance = appearance
             navBar.scrollEdgeAppearance = appearance
             navBar.compactAppearance = appearance
+        }
+
+        Task {
+            await NotificationManager.shared.requestAuthorization()
+            NotificationManager.shared.scheduleDailyNotifications()
         }
     }
 

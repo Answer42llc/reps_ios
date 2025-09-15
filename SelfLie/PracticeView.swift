@@ -770,9 +770,10 @@ struct PracticeView: View {
     
     private func incrementCount() {
         affirmation.repeatCount += 1
-        
+
         do {
             try viewContext.save()
+            NotificationManager.shared.markPracticeCompleted()
         } catch {
             showError("Failed to update progress: \(error.localizedDescription)")
         }
