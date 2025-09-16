@@ -53,7 +53,11 @@ class PermissionManager {
         let center = UNUserNotificationCenter.current()
         
         do {
-            let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+            var options: UNAuthorizationOptions = [.alert, .sound, .badge]
+            if #available(iOS 15.0, *) {
+                options.insert(.timeSensitive)
+            }
+            let granted = try await center.requestAuthorization(options: options)
             return granted
         } catch {
             return false
