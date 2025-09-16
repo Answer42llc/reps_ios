@@ -259,7 +259,7 @@ class AudioService: NSObject {
         recordingTimer = nil
     }
     
-    func playAudio(from url: URL) async throws {
+    func playAudio(from url: URL, volume: Float = 1.0) async throws {
         timingLog("⏰ [AudioService] 🎵 playAudio() method entered")
         guard !isPlaying else { 
             debugLog("⏰ [AudioService] ⚠️ Already playing, returning early")
@@ -275,6 +275,8 @@ class AudioService: NSObject {
             let playerCreateStartTime = Date()
             audioPlayer = try AVAudioPlayer(contentsOf: url)
             audioPlayer?.delegate = self
+            // 支持可选音量，用于隐私模式静音播放
+            audioPlayer?.volume = volume
             audioPlayer?.prepareToPlay()
             let playerCreateDuration = Date().timeIntervalSince(playerCreateStartTime) * 1000
             timingLog("⏰ [AudioService] ✅ AVAudioPlayer created and prepared in \(String(format: "%.0fms", playerCreateDuration))")
@@ -513,6 +515,22 @@ class AudioSessionManager {
         return portType == .bluetoothA2DP || 
                portType == .bluetoothHFP || 
                portType == .bluetoothLE
+    }
+    
+    /// 判断是否连接了耳机（包含有线耳机与蓝牙耳机）。
+    /// 规则：
+    /// - 有线耳机：输出包含 .headphones
+    /// - 蓝牙耳机：输出为蓝牙端口，且输入也存在蓝牙（通常代表带麦克风的耳机）。
+    /// - 蓝牙音箱：仅蓝牙输出而无蓝牙输入，则不视为耳机。
+    func isHeadsetConnected() -> Bool {
+        let route = audioSession.currentRoute
+        let hasWiredHeadphones = route.outputs.contains { $0.portType == .headphones }
+        let hasBluetoothOutput = route.outputs.contains { isBluetoothOutput($0.portType) }
+        let hasBluetoothInput = route.inputs.contains { input in
+            input.portType == .bluetoothHFP || input.portType == .bluetoothLE
+        }
+        let isBluetoothHeadset = hasBluetoothOutput && hasBluetoothInput
+        return hasWiredHeadphones || isBluetoothHeadset
     }
     private var recordingWarmupRecorder: AVAudioRecorder?
     private var initializationError: Error?

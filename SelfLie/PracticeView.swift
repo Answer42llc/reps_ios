@@ -8,6 +8,13 @@ struct PracticeView: View {
     
     let affirmation: Affirmation
     
+    // Privacy Mode (PracticeView only) - default OFF
+    @AppStorage("privacyModeEnabled") private var privacyModeEnabled: Bool = false
+    @State private var isMutedForPrivacy: Bool = false
+    @State private var privacyHighlightTimer: Timer?
+    @State private var privacyHighlightStartTime: Date?
+    private let privacyMutedHintText: String = "Muted for privacy"
+    
     @State private var audioService = AudioService()
     @State private var speechService = SpeechService()
     @State private var practiceState: PracticeState = .initial
@@ -88,6 +95,16 @@ struct PracticeView: View {
                     .padding(.top, 20)
                     
                     Spacer()
+                    // Privacy mode toggle
+                    HStack(spacing: 8) {
+                        Text("Privacy mode")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Toggle("", isOn: $privacyModeEnabled)
+                            .labelsHidden()
+                    }
+                    .padding(.trailing, 20)
+                    .padding(.top, 20)
                 }
                 Spacer()
             }
@@ -169,7 +186,6 @@ struct PracticeView: View {
         VStack(spacing: 24) {
             // Status area
             statusArea
-            
             // Content area
             contentArea
             
@@ -230,6 +246,16 @@ struct PracticeView: View {
         VStack(spacing: 16) {
             // Main affirmation text
             affirmationTextView
+            // Privacy muted hint directly under affirmation when playing muted
+            if privacyModeEnabled && isMutedForPrivacy && practiceState == .playing {
+                HStack(spacing: 6) {
+                    Image(systemName: "speaker.slash.fill")
+                        .foregroundColor(.secondary)
+                    Text(privacyMutedHintText)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
             // Replay button (shown after recording ends) with modified visibility
             replayButton
                 .opacity(practiceState == .completed ? 1 : 0)
@@ -294,9 +320,9 @@ struct PracticeView: View {
     private var currentStatusText: String {
         switch practiceState {
         case .initial, .playing:
-            return "Listen..."
+            return privacyModeEnabled ? "Listen in heart..." : "Listen..."
         case .recording:
-            return "Speak now..."
+            return privacyModeEnabled ? "Speak in heart..." : "Speak now..."
         case .analyzing:
             return "Processing..."
         case .completed:
@@ -354,29 +380,41 @@ struct PracticeView: View {
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Reset analysis state variables")
         
         #if targetEnvironment(simulator)
-        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Running in simulator mode - skipping actual audio/recording")
-        // Simplified simulator flow: just increment count
-        await MainActor.run {
-            practiceState = .completed
-            similarity = 0.8
-            incrementCount()
+        if privacyModeEnabled {
+            // Simulator privacy mode: run highlight-only flow and complete
+            await MainActor.run {
+                practiceState = .playing
+                initializeWordTimings()
+                highlightedWordIndices.removeAll()
+                currentWordIndex = -1
+            }
+            await MainActor.run {
+                startPrivacySpeakHighlighting()
+            }
+            return
+        } else {
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Running in simulator mode - skipping actual audio/recording")
+            await MainActor.run {
+                practiceState = .completed
+                similarity = 0.8
+                incrementCount()
+            }
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Simulator flow completed")
         }
-        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Simulator flow completed")
         #else
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Running on real device - requesting permissions")
-        // Real device flow with full audio playback and recording
-        // Request permissions first
-        let permissionStartTime = Date()
-        let microphoneGranted = await audioService.requestMicrophonePermission()
-        let speechGranted = await speechService.requestSpeechRecognitionPermission()
-        let permissionDuration = Date().timeIntervalSince(permissionStartTime) * 1000
-        
-        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Permissions completed in \(String(format: "%.0fms", permissionDuration)) - Microphone: \(microphoneGranted), Speech: \(speechGranted)")
-        
-        guard microphoneGranted && speechGranted else {
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Permission denied - cannot proceed with practice")
-            showError("Permissions required for practice session")
-            return
+        // Request permissions only when privacy mode is OFF
+        if !privacyModeEnabled {
+            let permissionStartTime = Date()
+            let microphoneGranted = await audioService.requestMicrophonePermission()
+            let speechGranted = await speechService.requestSpeechRecognitionPermission()
+            let permissionDuration = Date().timeIntervalSince(permissionStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Permissions completed in \(String(format: "%.0fms", permissionDuration)) - Microphone: \(microphoneGranted), Speech: \(speechGranted)")
+            guard microphoneGranted && speechGranted else {
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Permission denied - cannot proceed with practice")
+                showError("Permissions required for practice session")
+                return
+            }
         }
         
         // Set up audio session immediately after permissions for playback (first step)
@@ -393,17 +431,19 @@ struct PracticeView: View {
             return
         }
         
-        // Parallel execution: Start audio playback + recording warmup simultaneously
-        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🚀 Starting parallel audio playback + recording warmup")
-        let parallelStartTime = Date()
-        
-        async let audioPlaybackTask: () = playAffirmation()
-        async let recordingWarmupTask: () = performRecordingWarmup()
-        
-        let _ = await (audioPlaybackTask, recordingWarmupTask)
-        
-        let parallelDuration = Date().timeIntervalSince(parallelStartTime) * 1000
-        print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Parallel tasks completed in \(String(format: "%.0fms", parallelDuration))")
+        if privacyModeEnabled {
+            // Privacy: just play (possibly muted); after playback we start privacy highlighting
+            await playAffirmation()
+        } else {
+            // Normal: play + warmup recording in parallel
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🚀 Starting parallel audio playback + recording warmup")
+            let parallelStartTime = Date()
+            async let audioPlaybackTask: () = playAffirmation()
+            async let recordingWarmupTask: () = performRecordingWarmup()
+            let _ = await (audioPlaybackTask, recordingWarmupTask)
+            let parallelDuration = Date().timeIntervalSince(parallelStartTime) * 1000
+            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Parallel tasks completed in \(String(format: "%.0fms", parallelDuration))")
+        }
         #endif
     }
     
@@ -480,18 +520,31 @@ struct PracticeView: View {
         let playbackStartTime = Date()
         do {
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📞 About to call audioService.playAudio()")
-            try await audioService.playAudio(from: audioURL)
+            // Decide volume in privacy mode
+            var desiredVolume: Float = 1.0
+            if privacyModeEnabled {
+                let isHeadset = AudioSessionManager.shared.isHeadsetConnected()
+                desiredVolume = isHeadset ? 1.0 : 0.0
+                isMutedForPrivacy = !isHeadset
+            } else {
+                isMutedForPrivacy = false
+            }
+            try await audioService.playAudio(from: audioURL, volume: desiredVolume)
             let playbackDuration = Date().timeIntervalSince(playbackStartTime) * 1000
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📞 audioService.playAudio() returned after \(String(format: "%.0fms", playbackDuration))")
             
-            // 精确时间戳：准备调用startOptimizedRecording
-            let preRecordingCallTime = Date()
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: About to call startOptimizedRecording at [\(elapsedTime(from: appearTime))]")
-            
-            await startOptimizedRecording()
-            
-            let recordingCallDuration = Date().timeIntervalSince(preRecordingCallTime) * 1000
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: startOptimizedRecording call completed in \(String(format: "%.0fms", recordingCallDuration))")
+            if privacyModeEnabled {
+                await MainActor.run {
+                    startPrivacySpeakHighlighting()
+                }
+            } else {
+                // 精确时间戳：准备调用startOptimizedRecording
+                let preRecordingCallTime = Date()
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: About to call startOptimizedRecording at [\(elapsedTime(from: appearTime))]")
+                await startOptimizedRecording()
+                let recordingCallDuration = Date().timeIntervalSince(preRecordingCallTime) * 1000
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🎯 PRECISE: startOptimizedRecording call completed in \(String(format: "%.0fms", recordingCallDuration))")
+            }
             
         } catch {
             let playbackDuration = Date().timeIntervalSince(playbackStartTime) * 1000
@@ -768,6 +821,7 @@ struct PracticeView: View {
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Speech analysis completed in \(String(format: "%.0fms", totalAnalysisDuration))")
     }
     
+    @MainActor
     private func incrementCount() {
         affirmation.repeatCount += 1
 
@@ -834,6 +888,9 @@ struct PracticeView: View {
         audioService.stopPlayback()
         audioService.cleanupPreparedRecording()
         speechService.stopRecognition()
+        privacyHighlightTimer?.invalidate()
+        privacyHighlightTimer = nil
+        isMutedForPrivacy = false
         
         // Clean up timers
         maxRecordingTimer?.invalidate()
@@ -868,6 +925,9 @@ struct PracticeView: View {
         audioService.stopPlayback()
         audioService.cleanupPreparedRecording()
         speechService.stopRecognition()
+        privacyHighlightTimer?.invalidate()
+        privacyHighlightTimer = nil
+        isMutedForPrivacy = false
         
         // Clean up timers
         maxRecordingTimer?.invalidate()
@@ -985,6 +1045,10 @@ struct PracticeView: View {
                 }
                 // End icon with full waves
                 self.replayWaveLevel = 3
+                // In privacy mode, after listen stage, move to mental speak highlighting
+                if self.privacyModeEnabled {
+                    self.startPrivacySpeakHighlighting()
+                }
             }
         }
     }
@@ -1129,6 +1193,40 @@ struct PracticeView: View {
         }
         
         print("📊 [PracticeView] Created \(wordTimings.count) fallback timings using universal processor")
+    }
+
+    // MARK: - Privacy Mode Helpers
+    private func startPrivacySpeakHighlighting() {
+        // Ensure runs on main thread for UI updates
+        privacyHighlightTimer?.invalidate()
+        privacyHighlightTimer = nil
+        privacyHighlightStartTime = Date()
+        practiceState = .recording
+        highlightedWordIndices.removeAll()
+        currentWordIndex = -1
+        
+        if wordTimings.isEmpty { initializeWordTimings() }
+        let totalDuration = wordTimings.last?.endTime ?? max(audioDuration, 0)
+        
+        privacyHighlightTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+            let elapsed = Date().timeIntervalSince(self.privacyHighlightStartTime ?? Date())
+            let newIndex = NativeTextHighlighter.getWordIndexForTime(elapsed, wordTimings: self.wordTimings)
+            if newIndex != self.currentWordIndex {
+                self.currentWordIndex = newIndex
+                if newIndex >= 0 { self.highlightedWordIndices = Set(0...newIndex) } else { self.highlightedWordIndices.removeAll() }
+            }
+            if elapsed >= totalDuration + 0.1 {
+                self.privacyHighlightTimer?.invalidate()
+                self.privacyHighlightTimer = nil
+                // Complete successfully in privacy mode
+                self.practiceState = .completed
+                self.silentRecordingDetected = false
+                self.similarity = 0.8
+                HapticManager.shared.trigger(.success)
+                self.incrementCount()
+            }
+        }
+        RunLoop.main.add(privacyHighlightTimer!, forMode: .common)
     }
 }
 
