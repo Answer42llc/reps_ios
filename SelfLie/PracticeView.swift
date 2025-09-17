@@ -2,12 +2,275 @@ import SwiftUI
 import CoreData
 
 struct PracticeView: View {
-    @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("privacyModeEnabled") private var privacyModeEnabled: Bool = false
+
+    @FetchRequest(
+        sortDescriptors: [NSSortDescriptor(keyPath: \Affirmation.dateCreated, ascending: false)]
+    ) private var affirmations: FetchedResults<Affirmation>
+
+    let affirmation: Affirmation
+
+    @State private var currentIndex: Int = 0
+    @State private var hasInitializedIndex = false
+    @State private var closeTrigger: Int = 0
+    @State private var restartTrigger: Int = 0
+    @State private var pagerShouldAnimate = false
+    @State private var pagerOffset: CGFloat = 0
+    @State private var targetIndex: Int? = nil
+    @State private var isTransitioning = false
+    @State private var lastKnownPageHeight: CGFloat = 0
+
+    private let pageAnimationDuration: Double = 0.28
+    private var pageAnimation: Animation { .easeInOut(duration: pageAnimationDuration) }
+
+    private var affirmationIDs: [NSManagedObjectID] {
+        affirmations.map { $0.objectID }
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .top) {
+                Color(UIColor.systemGroupedBackground)
+                    .ignoresSafeArea()
+
+                pagerContent(width: geometry.size.width, height: geometry.size.height)
+                    .onAppear {
+                        lastKnownPageHeight = geometry.size.height
+                    }
+                    .onChange(of: geometry.size.height) { newHeight in
+                        lastKnownPageHeight = newHeight
+                    }
+
+                topBar
+            }
+        }
+        .onAppear {
+            initializeIndexIfNeeded()
+        }
+        .onChange(of: affirmationIDs) { _ in
+            initializeIndexIfNeeded()
+        }
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button(action: {
+                HapticManager.shared.trigger(.lightImpact)
+                closeTrigger += 1
+            }) {
+                Image(systemName: "xmark")
+                    .font(.title2)
+                    .foregroundColor(.black)
+            }
+            .padding(.leading, 20)
+            .padding(.top, 20)
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                Text("Privacy mode")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Toggle("", isOn: $privacyModeEnabled)
+                    .labelsHidden()
+            }
+            .padding(.trailing, 20)
+            .padding(.top, 20)
+        }
+    }
+
+    private func pagerContent(width: CGFloat, height: CGFloat) -> some View {
+        ZStack {
+            ForEach(affirmations.indices, id: \.self) { index in
+                PracticeSessionView(
+                    affirmation: affirmations[index],
+                    isActive: index == currentIndex,
+                    closeTrigger: closeTrigger,
+                    restartTrigger: restartTrigger,
+                    onRequestNext: goToNext,
+                    onDismiss: handleDismiss
+                )
+                .frame(width: width, height: height)
+                .offset(y: offset(for: index, pageHeight: height) + pagerOffset)
+            }
+        }
+        .gesture(dragGesture(pageHeight: height))
+    }
+
+    private func offset(for index: Int, pageHeight: CGFloat) -> CGFloat {
+        CGFloat(index - currentIndex) * pageHeight
+    }
+
+    private func dragGesture(pageHeight: CGFloat) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard !isTransitioning else { return }
+                pagerOffset = value.translation.height
+            }
+            .onEnded { value in
+                guard !isTransitioning else {
+                    withAnimation(pageAnimation) { pagerOffset = 0 }
+                    return
+                }
+                guard affirmations.count > 0 else {
+                    withAnimation(pageAnimation) { pagerOffset = 0 }
+                    return
+                }
+                handleDragEnd(translation: value.translation.height, pageHeight: pageHeight)
+            }
+    }
+
+    private func handleDragEnd(translation: CGFloat, pageHeight: CGFloat) {
+        lastKnownPageHeight = pageHeight
+        let threshold = pageHeight * 0.25
+        let direction: Int
+        if translation < -threshold {
+            direction = 1
+        } else if translation > threshold {
+            direction = -1
+        } else {
+            direction = 0
+        }
+
+        guard direction != 0 else {
+            withAnimation(pageAnimation) {
+                pagerOffset = 0
+            }
+            return
+        }
+
+        guard affirmations.count > 1 else {
+            withAnimation(pageAnimation) {
+                pagerOffset = 0
+            }
+            return
+        }
+
+        beginPageTransition(direction: direction, pageHeight: pageHeight, animated: true)
+    }
+
+    private func goToNext() {
+        performPageChange(direction: 1)
+    }
+
+    private func goToPrevious() {
+        performPageChange(direction: -1)
+    }
+
+    private func performPageChange(direction: Int, animated: Bool = true) {
+        guard !affirmations.isEmpty else { return }
+        guard direction != 0 else { return }
+
+        if affirmations.count == 1 {
+            restartTrigger += 1
+            withAnimation(pageAnimation) {
+                pagerOffset = 0
+            }
+            return
+        }
+
+        let height = lastKnownPageHeight > 0 ? lastKnownPageHeight : UIScreen.main.bounds.height
+        beginPageTransition(direction: direction, pageHeight: height, animated: animated)
+    }
+
+    private func updateIndex(to newIndex: Int) {
+        if newIndex == currentIndex {
+            restartTrigger += 1
+        } else {
+            currentIndex = newIndex
+        }
+    }
+
+    private func beginPageTransition(direction: Int, pageHeight: CGFloat, animated: Bool) {
+        guard !isTransitioning else { return }
+
+        let count = affirmations.count
+        guard count > 1 else {
+            withAnimation(pageAnimation) {
+                pagerOffset = 0
+            }
+            return
+        }
+
+        let computedTarget = (currentIndex + direction + count) % count
+
+        if computedTarget == currentIndex {
+            restartTrigger += 1
+            withAnimation(pageAnimation) {
+                pagerOffset = 0
+            }
+            return
+        }
+
+        targetIndex = computedTarget
+        isTransitioning = true
+
+        let shouldAnimate = animated && pagerShouldAnimate && pageHeight > 0
+
+        guard shouldAnimate else {
+            withAnimation(.none) {
+                updateIndex(to: computedTarget)
+                pagerOffset = 0
+            }
+            resetTransitionState()
+            return
+        }
+
+        let outgoingOffset = direction == 1 ? -pageHeight : pageHeight
+
+        withAnimation(pageAnimation) {
+            pagerOffset = outgoingOffset
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + pageAnimationDuration) {
+            completeTransitionIfNeeded(expectedIndex: computedTarget)
+        }
+    }
+
+    private func completeTransitionIfNeeded(expectedIndex: Int) {
+        guard isTransitioning, targetIndex == expectedIndex else { return }
+
+        withAnimation(.none) {
+            updateIndex(to: expectedIndex)
+            pagerOffset = 0
+        }
+
+        resetTransitionState()
+    }
+
+    private func resetTransitionState() {
+        targetIndex = nil
+        isTransitioning = false
+    }
+
+    private func initializeIndexIfNeeded() {
+        guard !hasInitializedIndex else { return }
+        if let targetIndex = affirmations.firstIndex(where: { $0.objectID == affirmation.objectID }) {
+            currentIndex = targetIndex
+        } else if !affirmations.isEmpty {
+            currentIndex = 0
+        }
+        hasInitializedIndex = true
+        pagerShouldAnimate = true
+    }
+
+    private func handleDismiss() {
+        dismiss()
+    }
+}
+
+struct PracticeSessionView: View {
+    @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.colorScheme) private var colorScheme
     
     let affirmation: Affirmation
-    
+    let isActive: Bool
+    let closeTrigger: Int
+    let restartTrigger: Int
+    let onRequestNext: () -> Void
+    let onDismiss: () -> Void
+
     // Privacy Mode (PracticeView only) - default OFF
     @AppStorage("privacyModeEnabled") private var privacyModeEnabled: Bool = false
     @State private var isMutedForPrivacy: Bool = false
@@ -47,10 +310,13 @@ struct PracticeView: View {
     // 防重复分析
     @State private var capturedRecognitionText: String = ""
     @State private var hasProcessedFinalAnalysis = false
-    
+
     // 语言检测缓存
     @State private var cachedLanguageResult: String? = nil
     @State private var hasPerformedLanguageDetection = false
+
+    @State private var sessionCancellationRequested = false
+    @State private var isClosing = false
     
     // 临时录音文件URL - 使用@State确保一致性
     @State private var practiceURL: URL = {
@@ -73,67 +339,177 @@ struct PracticeView: View {
         }
         return exists
     }
+
+    private func shouldAbortDueToCancellation(_ context: String) -> Bool {
+        if Task.isCancelled {
+            print("⏰ [PracticeView] Task cancelled during \(context) - aborting")
+            return true
+        }
+        if sessionCancellationRequested {
+            print("⏰ [PracticeView] Session cancellation requested during \(context) - aborting")
+            return true
+        }
+        return false
+    }
+
+    private func isCancellationError(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+            return true
+        }
+        if nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError {
+            return true
+        }
+        return false
+    }
+
+    private func handleActivationChange(_ isActive: Bool) async {
+        if isActive {
+            await MainActor.run {
+                sessionCancellationRequested = false
+            }
+            await activateSession()
+        } else {
+            await MainActor.run {
+                sessionCancellationRequested = true
+            }
+            await deactivateSession()
+        }
+    }
+
+    private func activateSession() async {
+        await MainActor.run {
+            appearTime = Date()
+            isClosing = false
+            print("⏰ [PracticeView] View appeared at \(elapsedTime(from: appearTime))")
+            resetStateForNewAttempt()
+        }
+        if shouldAbortDueToCancellation("activation preparation") {
+            print("⏰ [PracticeView] Activation cancelled before preparation")
+            return
+        }
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        if shouldAbortDueToCancellation("activation delay") {
+            print("⏰ [PracticeView] Activation cancelled during initial delay")
+            return
+        }
+        setupServiceCallbacks()
+        performInitialLanguageDetection()
+        if shouldAbortDueToCancellation("pre-startPracticeFlow") {
+            print("⏰ [PracticeView] Activation cancelled before startPracticeFlow")
+            return
+        }
+        await startPracticeFlow()
+    }
+
+    private func deactivateSession() async {
+        cleanupForRestart()
+        await MainActor.run {
+            resetStateForNewAttempt()
+        }
+    }
+
+    private func handleCloseRequest() async {
+        let shouldProceed = await MainActor.run { () -> Bool in
+            if isClosing { return false }
+            isClosing = true
+            sessionCancellationRequested = true
+            return true
+        }
+        guard shouldProceed else { return }
+        Task { await cleanup() }
+        await MainActor.run {
+            onDismiss()
+        }
+    }
+
+    private func advanceToNextAffirmation() async {
+        await MainActor.run {
+            sessionCancellationRequested = true
+        }
+        cleanupForRestart()
+        await MainActor.run {
+            resetStateForNewAttempt()
+            onRequestNext()
+        }
+    }
+
+    private func performManualRestart() async {
+        await MainActor.run {
+            sessionCancellationRequested = true
+        }
+        await deactivateSession()
+        await MainActor.run {
+            sessionCancellationRequested = false
+        }
+        await activateSession()
+    }
+
+    private func resetStateForNewAttempt() {
+        similarity = 0.0
+        silentRecordingDetected = false
+        highlightedWordIndices.removeAll()
+        currentWordIndex = -1
+        wordTimings.removeAll()
+        audioDuration = 0
+        isReplaying = false
+        replayWaveLevel = 1
+        recordingStartTime = nil
+        hasGoodSimilarity = false
+        isPreparingForRecording = false
+        capturedRecognitionText = ""
+        hasProcessedFinalAnalysis = false
+        practiceState = .initial
+        speechService.recognizedText = ""
+        speechService.recognizedWords.removeAll()
+        privacyHighlightTimer?.invalidate()
+        privacyHighlightTimer = nil
+        isMutedForPrivacy = false
+        maxRecordingTimer?.invalidate()
+        maxRecordingTimer = nil
+        practiceURL = makeNewPracticeURL()
+        isClosing = false
+    }
+
+    private func makeNewPracticeURL() -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return documentsPath.appendingPathComponent("\(UUID().uuidString).m4a")
+    }
     
     var body: some View {
         ZStack {
             // Background color
             Color(UIColor.systemGroupedBackground) // Adapts to dark/light mode
                 .ignoresSafeArea()
-            
-            // Top section with close button
-            VStack{
-                HStack {
-                    Button(action: {
-                        cleanup()
-                        dismiss()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.title2)
-                            .foregroundColor(.black)
-                    }
-                    .padding(.leading, 20)
-                    .padding(.top, 20)
-                    
-                    Spacer()
-                    // Privacy mode toggle
-                    HStack(spacing: 8) {
-                        Text("Privacy mode")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Toggle("", isOn: $privacyModeEnabled)
-                            .labelsHidden()
-                    }
-                    .padding(.trailing, 20)
-                    .padding(.top, 20)
-                }
-                Spacer()
-            }
-
             VStack(spacing: 0) {
-                // Main card container with fixed top positioning
                 cardView
-                    .padding(.top, 88) // Fixed top padding
-
+                    .padding(.top, 88)
                 Spacer()
-                
-                // External action area (outside card)
                 externalActionArea
                     .padding(.bottom, 40)
             }
-
         }
-        .onAppear {
-            appearTime = Date()
-            print("⏰ [PracticeView] View appeared at \(elapsedTime(from: appearTime))")
-            setupServiceCallbacks()
-            performInitialLanguageDetection()
+        .task(id: isActive) {
+            await handleActivationChange(isActive)
+        }
+        .onChange(of: closeTrigger) { _ in
+            guard isActive else { return }
             Task {
-                await startPracticeFlow()
+                await handleCloseRequest()
+            }
+        }
+        .onChange(of: restartTrigger) { _ in
+            guard isActive else { return }
+            Task {
+                await performManualRestart()
             }
         }
         .alert("Error", isPresented: $showingError) {
             Button("OK") {
-                dismiss()
+                onDismiss()
             }
         } message: {
             Text(errorMessage)
@@ -286,24 +662,14 @@ struct PracticeView: View {
     
     private var externalActionArea: some View {
         VStack {
-            if practiceState != .completed {
-                Button(action: {
-                    cleanup()
-                    dismiss()
-                }) {
-                    Text("Can't speak now")
-                        .fontDesign(.default)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.gray)
-                }
-            } else if !silentRecordingDetected && similarity >= 0.8 {
+            if practiceState == .completed && !silentRecordingDetected && similarity >= 0.8 {
                 Button(action: {
                     HapticManager.shared.trigger(.lightImpact)
-                    cleanup()
-                    dismiss()
-
+                    Task {
+                        await advanceToNextAffirmation()
+                    }
                 }) {
-                    Text("Done")
+                    Text("Next")
                         .fontDesign(.default)
                         .fontWeight(.semibold)
                         .foregroundColor(.white)
@@ -311,7 +677,6 @@ struct PracticeView: View {
                         .frame(maxWidth: .infinity, maxHeight: 50)
                         .background(Capsule().fill(.purple))
                         .padding(.horizontal, 20)
-
                 }
             }
         }
@@ -365,6 +730,7 @@ struct PracticeView: View {
     
     
     private func startPracticeFlow() async {
+        if shouldAbortDueToCancellation("startPracticeFlow entry") { return }
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Starting practice flow for affirmation: '\(affirmation.text)'")
         
         // Ensure service callbacks are set up before starting
@@ -372,12 +738,14 @@ struct PracticeView: View {
             setupServiceCallbacks()
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Service callbacks set up for practice flow")
         }
+        if shouldAbortDueToCancellation("startPracticeFlow after setup") { return }
         
         // 重置防重复分析的状态变量
         capturedRecognitionText = ""
         hasProcessedFinalAnalysis = false
         hasGoodSimilarity = false
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Reset analysis state variables")
+        if shouldAbortDueToCancellation("startPracticeFlow after reset") { return }
         
         #if targetEnvironment(simulator)
         if privacyModeEnabled {
@@ -433,6 +801,7 @@ struct PracticeView: View {
         
         if privacyModeEnabled {
             // Privacy: just play (possibly muted); after playback we start privacy highlighting
+            if shouldAbortDueToCancellation("privacy playback start") { return }
             await playAffirmation()
         } else {
             // Normal: play + warmup recording in parallel
@@ -448,6 +817,7 @@ struct PracticeView: View {
     }
     
     private func performRecordingWarmup() async {
+        if shouldAbortDueToCancellation("recording warmup entry") { return }
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔥 PRECISE: Starting optimized recording warmup")
         let warmupStartTime = Date()
         
@@ -488,6 +858,7 @@ struct PracticeView: View {
     }
     
     private func playAffirmation() async {
+        if shouldAbortDueToCancellation("playAffirmation entry") { return }
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🔊 PRECISE: Starting audio playback stage")
         
         // 优化：直接设置状态，避免MainActor调度延迟
@@ -502,6 +873,8 @@ struct PracticeView: View {
         let stateUpdateDuration = Date().timeIntervalSince(stateUpdateStartTime) * 1000
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚡ PRECISE: State update completed in \(String(format: "%.0fms", stateUpdateDuration))")
         
+        if shouldAbortDueToCancellation("before resolving audioURL") { return }
+
         guard let audioURL = affirmation.audioURL else {
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Audio URL not found for affirmation")
             showError("Audio file not found")
@@ -529,6 +902,7 @@ struct PracticeView: View {
             } else {
                 isMutedForPrivacy = false
             }
+            if shouldAbortDueToCancellation("before playAudio call") { return }
             try await audioService.playAudio(from: audioURL, volume: desiredVolume)
             let playbackDuration = Date().timeIntervalSince(playbackStartTime) * 1000
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📞 audioService.playAudio() returned after \(String(format: "%.0fms", playbackDuration))")
@@ -548,14 +922,20 @@ struct PracticeView: View {
             
         } catch {
             let playbackDuration = Date().timeIntervalSince(playbackStartTime) * 1000
-            print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Audio playback failed in \(String(format: "%.0fms", playbackDuration)): \(error.localizedDescription)")
-            await MainActor.run {
-                showError("Failed to play audio: \(error.localizedDescription)")
+            if isCancellationError(error) || Task.isCancelled {
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ⚠️ Audio playback cancelled after \(String(format: "%.0fms", playbackDuration)) - ignoring")
+                return
+            } else {
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Audio playback failed in \(String(format: "%.0fms", playbackDuration)): \(error.localizedDescription)")
+                await MainActor.run {
+                    showError("Failed to play audio: \(error.localizedDescription)")
+                }
             }
         }
     }
-    
+
     private func startOptimizedRecording() async {
+        if shouldAbortDueToCancellation("startOptimizedRecording entry") { return }
         let methodEntryTime = Date()
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 🚀 PRECISE: ENTERED startOptimizedRecording() at [\(elapsedTime(from: appearTime))]")
         
@@ -852,23 +1232,7 @@ struct PracticeView: View {
         }
         
         await MainActor.run {
-            similarity = 0.0
-            silentRecordingDetected = false
-            // Force clear text highlighting for restart
-            highlightedWordIndices.removeAll()
-            currentWordIndex = -1
-            isReplaying = false
-            
-            // Reset speechService state to clear previous recognition results
-            speechService.recognizedText = ""
-            speechService.recognizedWords.removeAll()
-            print("🔄 [PracticeView] Reset speechService state for restart")
-            
-            // Reset duplicate analysis protection flags
-            hasProcessedFinalAnalysis = false
-            capturedRecognitionText = ""
-            hasGoodSimilarity = false
-            print("🔄 [PracticeView] Reset analysis protection flags for restart")
+            resetStateForNewAttempt()
         }
         await startPracticeFlow()
     }
@@ -919,7 +1283,7 @@ struct PracticeView: View {
     }
     
     /// Full cleanup including audio session deactivation - only for view dismissal
-    private func cleanup() {
+    private func cleanup() async {
         print("🧹 [PracticeView] Full cleanup including audio session deactivation")
         audioService.stopRecording()
         audioService.stopPlayback()
@@ -945,13 +1309,11 @@ struct PracticeView: View {
         
         // Deactivate audio session and notify other apps to resume (Apple Music, etc.)
         print("🎵 [PracticeView] Deactivating audio session to restore other apps' audio")
-        Task {
-            do {
-                try await AudioSessionManager.shared.deactivateSession()
-                print("✅ [PracticeView] Audio session deactivated, other apps can resume playback")
-            } catch {
-                print("⚠️ [PracticeView] Failed to deactivate audio session: \(error.localizedDescription)")
-            }
+        do {
+            try await AudioSessionManager.shared.deactivateSession()
+            print("✅ [PracticeView] Audio session deactivated, other apps can resume playback")
+        } catch {
+            print("⚠️ [PracticeView] Failed to deactivate audio session: \(error.localizedDescription)")
         }
         
         // Clear all callbacks to prevent memory leaks
@@ -1232,7 +1594,7 @@ struct PracticeView: View {
 
 // MARK: - Testing Extensions
 #if DEBUG
-extension PracticeView {
+extension PracticeSessionView {
     func simulateRecordingStart() {
         // Reset highlighting state for testing
         highlightedWordIndices.removeAll()
@@ -1262,5 +1624,3 @@ enum PracticeState {
     return PracticeView(affirmation: sampleAffirmation)
         .environment(\.managedObjectContext, context)
 }
-
-

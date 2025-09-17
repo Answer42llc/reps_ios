@@ -39,7 +39,14 @@ final class AudioAndHighlightingTests: XCTestCase {
     func testHighlightingStateReset() {
         // Create mock affirmation
         let mockAffirmation = createMockAffirmation(text: "Hello world test")
-        let practiceView = PracticeView(affirmation: mockAffirmation)
+        var practiceView = PracticeSessionView(
+            affirmation: mockAffirmation,
+            isActive: true,
+            closeTrigger: 0,
+            restartTrigger: 0,
+            onRequestNext: {},
+            onDismiss: {}
+        )
         
         // Simulate highlighted state after playback
         practiceView.highlightedWordIndices = Set([0, 1, 2])

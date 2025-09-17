@@ -329,22 +329,34 @@ class AudioService: NSObject {
             debugLog("⏰ [AudioService] 🎵 Playback completed, keeping audio session active for recording")
             
         } catch {
-            print("⏰ [AudioService] ❌ playAudio() failed with error: \(error.localizedDescription)")
+            let isCancellation = error is CancellationError
+            if isCancellation {
+                print("⏰ [AudioService] ⚠️ playAudio() cancelled: \(error.localizedDescription)")
+            } else {
+                print("⏰ [AudioService] ❌ playAudio() failed with error: \(error.localizedDescription)")
+            }
+
             isPlaying = false
             stopPlaybackProgressTracking()
-            
-            // 清理播放完成continuation
+
             if let continuation = playbackCompletionContinuation {
                 playbackCompletionContinuation = nil
                 continuation.resume(throwing: error)
             }
-            
+
+            if isCancellation {
+                throw CancellationError()
+            }
+
             // Keep audio session active even on failure, will be deactivated when PracticeView closes
             debugLog("⏰ [AudioService] ⚠️ Playback failed, keeping audio session active for cleanup by caller")
-            
+
+            if let audioError = error as? AudioServiceError {
+                throw audioError
+            }
             throw AudioServiceError.playbackFailed
         }
-        
+
         timingLog("⏰ [AudioService] 🎵 playAudio() method exiting")
     }
     
