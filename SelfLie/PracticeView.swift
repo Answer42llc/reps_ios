@@ -95,6 +95,9 @@ struct PracticeView: View {
                 .offset(y: offset(for: index, pageHeight: height) + pagerOffset)
             }
         }
+        .frame(width: width, height: height, alignment: .top)
+        .clipped()
+        .contentShape(Rectangle())
         .gesture(dragGesture(pageHeight: height))
     }
 
