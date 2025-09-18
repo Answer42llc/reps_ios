@@ -182,6 +182,7 @@ struct PracticeView: View {
             restartTrigger += 1
         } else {
             currentIndex = newIndex
+            HapticManager.shared.trigger(.lightImpact)
         }
     }
 
