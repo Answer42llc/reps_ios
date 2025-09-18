@@ -689,9 +689,9 @@ struct PracticeSessionView: View {
     private var currentStatusText: String {
         switch practiceState {
         case .initial, .playing:
-            return privacyModeEnabled ? "Listen in heart..." : "Listen..."
+            return privacyModeEnabled ? "Listen in your head" : "Listen..."
         case .recording:
-            return privacyModeEnabled ? "Speak in heart..." : "Speak now..."
+            return privacyModeEnabled ? "Say it in your mind" : "Speak now..."
         case .analyzing:
             return "Processing..."
         case .completed:

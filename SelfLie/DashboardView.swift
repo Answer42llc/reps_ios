@@ -136,8 +136,8 @@ struct DashboardView: View {
 
 struct AffirmationCardView: View {
     @Environment(\.colorScheme) private var colorScheme
-    
-    let affirmation: Affirmation
+
+    @ObservedObject var affirmation: Affirmation
     let onPlayTapped: () -> Void
     let onDelete: () -> Void
     
