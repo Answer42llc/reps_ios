@@ -452,6 +452,7 @@ struct PracticeSessionView: View {
         await activateSession()
     }
 
+    @MainActor
     private func resetStateForNewAttempt() {
         similarity = 0.0
         silentRecordingDetected = false
@@ -471,16 +472,27 @@ struct PracticeSessionView: View {
         speechService.recognizedWords.removeAll()
         privacyHighlightTimer?.invalidate()
         privacyHighlightTimer = nil
-        isMutedForPrivacy = false
         maxRecordingTimer?.invalidate()
         maxRecordingTimer = nil
         practiceURL = makeNewPracticeURL()
         isClosing = false
+        _ = refreshPrivacyMuteState()
     }
 
     private func makeNewPracticeURL() -> URL {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return documentsPath.appendingPathComponent("\(UUID().uuidString).m4a")
+    }
+    
+    @MainActor
+    private func refreshPrivacyMuteState() -> Bool {
+        guard privacyModeEnabled else {
+            isMutedForPrivacy = false
+            return false
+        }
+        let shouldMute = !AudioSessionManager.shared.isHeadsetConnected()
+        isMutedForPrivacy = shouldMute
+        return shouldMute
     }
     
     var body: some View {
@@ -688,8 +700,18 @@ struct PracticeSessionView: View {
     
     private var currentStatusText: String {
         switch practiceState {
-        case .initial, .playing:
-            return privacyModeEnabled ? "Listen in your head" : "Listen..."
+        case .initial:
+            if privacyModeEnabled {
+                if privacyModeEnabled {
+                    return isMutedForPrivacy ? "Listen in your head" : "Listen..."
+                }
+            }
+            return "Listen..."
+        case .playing:
+            if privacyModeEnabled {
+                return isMutedForPrivacy ? "Listen in your head" : "Listen..."
+            }
+            return "Listen..."
         case .recording:
             return privacyModeEnabled ? "Say it in your mind" : "Speak now..."
         case .analyzing:
@@ -897,15 +919,8 @@ struct PracticeSessionView: View {
         let playbackStartTime = Date()
         do {
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] 📞 About to call audioService.playAudio()")
-            // Decide volume in privacy mode
-            var desiredVolume: Float = 1.0
-            if privacyModeEnabled {
-                let isHeadset = AudioSessionManager.shared.isHeadsetConnected()
-                desiredVolume = isHeadset ? 1.0 : 0.0
-                isMutedForPrivacy = !isHeadset
-            } else {
-                isMutedForPrivacy = false
-            }
+            let shouldMuteForPrivacy = await MainActor.run { refreshPrivacyMuteState() }
+            let desiredVolume: Float = shouldMuteForPrivacy ? 0.0 : 1.0
             if shouldAbortDueToCancellation("before playAudio call") { return }
             try await audioService.playAudio(from: audioURL, volume: desiredVolume)
             let playbackDuration = Date().timeIntervalSince(playbackStartTime) * 1000
