@@ -134,7 +134,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
                                 .fontDesign(.serif)
                                 .frame(minHeight: 100, maxHeight: 150)
                                 .padding(12)
-                                .background(Color(UIColor.secondarySystemBackground))
+                                .background(Color(UIColor.systemBackground))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(Color.purple.opacity(0.3), lineWidth: 1)
@@ -278,9 +278,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
     private var descriptionForState: String {
         switch recordingState {
         case .idle:
-            return flowType == .onboarding ? 
-                "Giving your goals a clear reason can helps you achieve them, as our brains are always looking for reasons." :
-                "Speak clearly and with conviction"
+            return ""
         default:
             return ""
         }

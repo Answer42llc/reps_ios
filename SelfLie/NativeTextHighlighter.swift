@@ -9,9 +9,27 @@ struct NativeTextHighlighter: View {
     
     var body: some View {
         Text(createAttributedText())
-            .font(.title)
+            .font(dynamicFont)
             .fontWeight(.medium)
             .multilineTextAlignment(.center)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .minimumScaleFactor(0.8)
+    }
+
+    /// Choose a font size that keeps long affirmations legible without truncation.
+    private var dynamicFont: Font {
+        let characterCount = text.count
+        switch characterCount {
+        case ..<80:
+            return .title
+        case 80..<140:
+            return .title2
+        case 140..<200:
+            return .title3
+        default:
+            return .headline
+        }
     }
     
     /// Creates AttributedString with highlighted words using Apple's universal text processing
