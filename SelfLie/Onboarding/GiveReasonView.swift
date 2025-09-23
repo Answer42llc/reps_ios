@@ -70,15 +70,18 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
                             .padding(.vertical, 8)
                         } else {
                             // Preset buttons
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(presetReasons, id: \.self) { reason in
-                                    HStack {
-                                        OnboardingPresetButton(title: reason) {
-                                            customReason = reason
+                            ScrollView{
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ForEach(presetReasons, id: \.self) { reason in
+                                        HStack {
+                                            OnboardingPresetButton(title: reason) {
+                                                customReason = reason
+                                            }
+                                            Spacer()
                                         }
-                                        Spacer()
                                     }
                                 }
+                                .padding(.bottom, 64)
                             }
                         }
                     }
@@ -150,6 +153,7 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
                     alignment: .top
                 )
                 .padding(.horizontal, 16)
+                .background(Color(.systemBackground))
             }
         }
         .background(Color(UIColor.systemGroupedBackground))

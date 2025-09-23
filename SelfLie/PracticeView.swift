@@ -61,7 +61,7 @@ struct PracticeView: View {
             }) {
                 Image(systemName: "xmark")
                     .font(.title2)
-                    .foregroundColor(.black)
+                    .foregroundColor(.secondary)
             }
             .padding(.leading, 20)
             .padding(.top, 20)
