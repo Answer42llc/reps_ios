@@ -94,7 +94,7 @@ struct DefineGoalView<DataModel: AffirmationDataProtocol>: View {
                     alignment: .top
                 )
                 .padding(.horizontal, 16)
-                .background(Color(.systemBackground))
+                .background(Color(UIColor.systemGroupedBackground))
                 
             }
 

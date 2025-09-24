@@ -4,6 +4,7 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
     @Bindable var dataModel: DataModel
     @State private var customReason = ""
     @FocusState private var isReasonFieldFocused: Bool
+    @Environment(\.colorScheme) var colorScheme: ColorScheme
     
     private var isReasonValid: Bool {
         !customReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -153,7 +154,7 @@ struct GiveReasonView<DataModel: AffirmationDataProtocol>: View {
                     alignment: .top
                 )
                 .padding(.horizontal, 16)
-                .background(Color(.systemBackground))
+                .background(Color(UIColor.systemGroupedBackground))
             }
         }
         .background(Color(UIColor.systemGroupedBackground))

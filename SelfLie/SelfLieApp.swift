@@ -8,12 +8,18 @@
 import SwiftUI
 import CoreData
 import UserNotifications
+import RevenueCat
 
 @main
 struct SelfLieApp: App {
     let persistenceController = PersistenceController.shared
 
     init() {
+        
+        //初始化 RevenueCat
+        Purchases.logLevel = .debug
+        Purchases.configure(withAPIKey: "appl_SbSlEYBLSPjipOgJiHXhsegMbXo")
+        Purchases.proxyURL = URL(string: "https://api.rc-backup.com/")!
         // 获取 serif 风格的大标题字体
         if let descriptor = UIFontDescriptor
             .preferredFontDescriptor(withTextStyle: .largeTitle)

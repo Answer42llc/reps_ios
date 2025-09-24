@@ -96,11 +96,11 @@ struct DashboardView: View {
                 .font(.system(size: 60))
                 .foregroundColor(.gray)
             
-            Text("No affirmations yet")
+            Text("No reps yet")
                 .font(.title2)
                 .foregroundColor(.secondary)
             
-            Text("Tap 'Add' to create your first affirmation")
+            Text("Tap 'Add' to create your first rep")
                 .font(.body)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
