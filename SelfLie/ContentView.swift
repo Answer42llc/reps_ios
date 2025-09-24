@@ -10,6 +10,8 @@ import CoreData
 
 struct ContentView: View {
     @State private var navigationCoordinator = NavigationCoordinator()
+    @State private var subscriptionManager = SubscriptionManager()
+    @State private var paywallController = PaywallController()
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @State private var notificationObserverAdded = false
     
@@ -29,6 +31,8 @@ struct ContentView: View {
                     }
             }
             .environment(navigationCoordinator)
+            .environment(subscriptionManager)
+            .environment(paywallController)
             .onAppear {
                 // For debugging: Skip onboarding to test main view
                 if debugMode {
@@ -43,11 +47,26 @@ struct ContentView: View {
                         request.sortDescriptors = [NSSortDescriptor(key: "dateCreated", ascending: false)]
                         request.fetchLimit = 1
                         if let latest = try? context.fetch(request).first {
-                            navigationCoordinator.navigateToPractice(affirmation: latest)
+                            if subscriptionManager.isAffirmationWithinFreeQuota(latest) {
+                                navigationCoordinator.navigateToPractice(affirmation: latest)
+                            } else {
+                                let objectID = latest.objectID
+                                paywallController.present(context: .practiceAffirmation) {
+                                    let context = PersistenceController.shared.container.viewContext
+                                    if let refreshed = try? context.existingObject(with: objectID) as? Affirmation {
+                                        navigationCoordinator.navigateToPractice(affirmation: refreshed)
+                                    }
+                                }
+                            }
                         }
                     }
                     notificationObserverAdded = true
                 }
+            }
+            .fullScreenCover(isPresented: paywallBinding, onDismiss: handlePaywallDismiss) {
+                PaywallView()
+                    .environment(subscriptionManager)
+                    .environment(paywallController)
             }
             .overlay(alignment: .topTrailing) {
                 // Debug button to reset onboarding
@@ -92,6 +111,22 @@ struct ContentView: View {
         } else {
             // Show onboarding for new users
             OnboardingContainerView()
+        }
+    }
+
+    private var paywallBinding: Binding<Bool> {
+        Binding(
+            get: { paywallController.isPresented },
+            set: { paywallController.isPresented = $0 }
+        )
+    }
+
+    private func handlePaywallDismiss() {
+        let pendingAction = paywallController.pendingAction
+        let shouldRun = subscriptionManager.hasPremiumAccess
+        paywallController.reset()
+        if shouldRun {
+            pendingAction?()
         }
     }
 }

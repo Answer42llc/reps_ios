@@ -31,6 +31,8 @@ extension Color {
 struct DashboardView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(SubscriptionManager.self) private var subscriptionManager
+    @Environment(PaywallController.self) private var paywallController
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \Affirmation.dateCreated, ascending: false)])
     private var affirmations: FetchedResults<Affirmation>
@@ -49,11 +51,11 @@ struct DashboardView: View {
                         emptyStateView
                             .padding(.top, 100)
                     } else {
-                        ForEach(affirmations, id: \.objectID) { affirmation in
+                        ForEach(Array(affirmations.enumerated()), id: \.element.objectID) { index, affirmation in
                             AffirmationCardView(
                                 affirmation: affirmation,
                                 onPlayTapped: {
-                                    selectedAffirmation = affirmation
+                                    handlePracticeTapped(affirmation, index: index)
                                 },
                                 onDelete: {
                                     deleteAffirmation(affirmation)
@@ -73,7 +75,7 @@ struct DashboardView: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     HapticManager.shared.trigger(.mediumImpact)
-                    showingAddAffirmation = true
+                    handleAddAffirmationTapped()
                 }) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
@@ -130,6 +132,30 @@ struct DashboardView: View {
             try viewContext.save()
         } catch {
             print("Failed to delete affirmation: \(error)")
+        }
+    }
+
+    private func handleAddAffirmationTapped() {
+        if subscriptionManager.canCreateAffirmation(totalCount: affirmations.count) {
+            showingAddAffirmation = true
+        } else {
+            paywallController.present(context: .createAffirmation) {
+                showingAddAffirmation = true
+            }
+        }
+    }
+    
+    private func handlePracticeTapped(_ affirmation: Affirmation, index: Int) {
+        if subscriptionManager.isAffirmationWithinFreeQuota(affirmation) {
+            selectedAffirmation = affirmation
+        } else {
+            let objectID = affirmation.objectID
+            paywallController.present(context: .practiceAffirmation) {
+                let context = PersistenceController.shared.container.viewContext
+                if let refreshed = try? context.existingObject(with: objectID) as? Affirmation {
+                    selectedAffirmation = refreshed
+                }
+            }
         }
     }
 }
@@ -195,4 +221,3 @@ struct AffirmationCardView: View {
         DashboardView()
         .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }
-
