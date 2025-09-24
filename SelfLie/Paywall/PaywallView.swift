@@ -41,10 +41,11 @@ struct PaywallView: View {
                         header
                         benefitList
                         planSelection
+                        termsText
                     }
                     .padding(.horizontal, 24)
                     .padding(.top, 56)
-                    .padding(.bottom, 240)
+                    .padding(.bottom, 100)
                 }
             
                 
@@ -137,6 +138,12 @@ struct PaywallView: View {
                 }
             }
         }
+    }
+    
+    private var termsText: some View {
+        Text("You may cancel your free trial at any time through your iTunes account settings; otherwise, your subscription will automatically renew. To avoid being charged, cancellation must occur at least 24 hours before the end of the free trial or any subscription period. Subscriptions that include a free trial will automatically convert to a paid subscription upon renewal. Please note that any unused portion of a free trial will be forfeited if you purchase a premium subscription during the trial period. Subscription payments will be billed to your iTunes account upon purchase confirmation and at the start of each renewal term. For more information, please see our Terms of Use and Privacy Policy.")
+            .font(.footnote)
+            .foregroundColor(.gray)
     }
     
     private var loadingState: some View {
