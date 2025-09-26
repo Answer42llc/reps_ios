@@ -13,13 +13,17 @@ extension Affirmation {
 
     @NSManaged public var id: UUID
     @NSManaged public var text: String
-    @NSManaged public var audioFileName: String
+    @NSManaged public var audioFileName: String?
     @NSManaged public var repeatCount: Int32
     @NSManaged public var targetCount: Int32
     @NSManaged public var dateCreated: Date
+    @NSManaged public var updatedAt: Date?
+    @NSManaged public var lastPracticedAt: Date?
+    @NSManaged @objc(isArchived) internal var isArchivedRaw: NSNumber?
     @NSManaged public var wordTimingsData: Data?
     
     var audioURL: URL? {
+        guard let audioFileName, !audioFileName.isEmpty else { return nil }
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         return documentsPath.appendingPathComponent(audioFileName)
     }
@@ -30,6 +34,15 @@ extension Affirmation {
     
     var progressPercentage: Float {
         return Float(repeatCount) / Float(targetCount)
+    }
+
+    var isArchived: Bool {
+        get { isArchivedRaw?.boolValue ?? false }
+        set { isArchivedRaw = NSNumber(value: newValue) }
+    }
+
+    var isActive: Bool {
+        !isArchived
     }
     
     /// Word timings for precise playback highlighting

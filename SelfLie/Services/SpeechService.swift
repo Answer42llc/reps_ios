@@ -19,6 +19,7 @@ class SpeechService: NSObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
+    private var isAudioTapInstalled = false
     
     var recognizedText = ""
     var isRecognizing = false
@@ -156,19 +157,26 @@ class SpeechService: NSObject {
         
         // Configure audio engine with proper format handling
         let inputNode = audioEngine.inputNode
-        
-        // Get the hardware input format
-        let inputFormat = inputNode.inputFormat(forBus: 0)
-        print("🎙️ [SpeechService] Input hardware format: \(inputFormat)")
-        
-        // Use the hardware input format for the tap to avoid format mismatch
-        // This ensures we use the actual hardware sample rate (24kHz in this case)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+
+        // Always use the node's output format – AVAudioInputNode exposes the microphone stream here
+        // Using inputFormat(forBus:) can yield an invalid (0 Hz / 0 channels) format on some devices
+        let tapFormat = inputNode.outputFormat(forBus: 0)
+        print("🎙️ [SpeechService] Input hardware format: \(tapFormat)")
+
+        // Remove any existing tap before installing a new one to avoid duplicate tap crashes
+        if isAudioTapInstalled {
+            inputNode.removeTap(onBus: 0)
+            isAudioTapInstalled = false
+        }
+
+        // Configure the tap using the validated hardware format
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
             recognitionRequest.append(buffer)
             
             // Calculate and monitor audio level
             self?.processAudioLevel(from: buffer)
         }
+        isAudioTapInstalled = true
         
         // Prepare and start audio engine with error handling
         do {
@@ -193,8 +201,11 @@ class SpeechService: NSObject {
             recognitionTask = nil
             self.recognitionRequest?.endAudio()
             self.recognitionRequest = nil
-            audioEngine.inputNode.removeTap(onBus: 0)
-            
+            if isAudioTapInstalled {
+                audioEngine.inputNode.removeTap(onBus: 0)
+                isAudioTapInstalled = false
+            }
+
             throw SpeechServiceError.recognitionFailed
         }
     }
@@ -213,8 +224,9 @@ class SpeechService: NSObject {
         }
         
         // Remove audio tap safely
-        if audioEngine.inputNode.numberOfInputs > 0 {
+        if isAudioTapInstalled {
             audioEngine.inputNode.removeTap(onBus: 0)
+            isAudioTapInstalled = false
         }
         
         // End audio input for recognition request

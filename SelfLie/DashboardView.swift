@@ -33,8 +33,10 @@ struct DashboardView: View {
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
     @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(PaywallController.self) private var paywallController
+    @Environment(CloudSyncService.self) private var cloudSyncService
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Affirmation.dateCreated, ascending: false)])
+        sortDescriptors: [NSSortDescriptor(keyPath: \Affirmation.dateCreated, ascending: false)],
+        predicate: NSPredicate(format: "isArchived == NO OR isArchived == nil"))
     private var affirmations: FetchedResults<Affirmation>
     
     @State private var selectedAffirmation: Affirmation?
@@ -46,6 +48,7 @@ struct DashboardView: View {
                 .ignoresSafeArea()
             
             ScrollView {
+                syncStatusBanner
                 LazyVStack(spacing: 16) {
                     if affirmations.isEmpty {
                         emptyStateView
@@ -109,14 +112,38 @@ struct DashboardView: View {
         }
         .padding()
     }
+
+    private var syncStatusBanner: some View {
+        Group {
+            if cloudSyncService.isBusy {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Syncing...")
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let error = cloudSyncService.lastSyncError {
+                Text("Sync error: \(error.localizedDescription)")
+                    .font(.footnote)
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let date = cloudSyncService.lastSyncDate {
+                Text("Last sync: \(DateFormatter.localizedString(from: date, dateStyle: .short, timeStyle: .short))")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
     
     private func deleteAffirmations(offsets: IndexSet) {
-        offsets.map { affirmations[$0] }.forEach(viewContext.delete)
-        
-        do {
-            try viewContext.save()
-        } catch {
-            // Handle error appropriately
+        offsets.map { affirmations[$0] }.forEach { affirmation in
+            markAffirmationArchived(affirmation)
         }
     }
     
@@ -125,13 +152,17 @@ struct DashboardView: View {
         if selectedAffirmation?.objectID == affirmation.objectID {
             selectedAffirmation = nil
         }
-        
-        viewContext.delete(affirmation)
-        
+        markAffirmationArchived(affirmation)
+    }
+
+    private func markAffirmationArchived(_ affirmation: Affirmation) {
+        affirmation.isArchived = true
+        affirmation.updatedAt = Date()
         do {
             try viewContext.save()
+            cloudSyncService.enqueueUpload(for: affirmation.objectID)
         } catch {
-            print("Failed to delete affirmation: \(error)")
+            print("Failed to archive affirmation: \(error)")
         }
     }
 

@@ -4,6 +4,7 @@ import CoreData
 struct RecordingView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(NavigationCoordinator.self) private var navigationCoordinator
+    @Environment(CloudSyncService.self) private var cloudSyncService
     
     let affirmationText: String
     @Binding var showingAddAffirmation: Bool
@@ -344,11 +345,15 @@ struct RecordingView: View {
         newAffirmation.repeatCount = 0
         newAffirmation.targetCount = 1000
         newAffirmation.dateCreated = Date()
+        newAffirmation.updatedAt = Date()
+        newAffirmation.lastPracticedAt = nil
+        newAffirmation.isArchived = false
         
         print("Saving affirmation with audio file: \(recordingFileName)")
         
         do {
             try viewContext.save()
+            cloudSyncService.enqueueUpload(for: newAffirmation.objectID)
             
             // Start audio analysis in background to generate precise word timings
             Task {
@@ -374,9 +379,11 @@ struct RecordingView: View {
             // Update the affirmation with precise timings on main thread
             await MainActor.run {
                 affirmation.wordTimings = wordTimings
+                affirmation.updatedAt = Date()
                 
                 do {
                     try viewContext.save()
+                    cloudSyncService.enqueueUpload(for: affirmation.objectID)
                     print("✅ [RecordingView] Saved \(wordTimings.count) precise word timings")
                 } catch {
                     print("⚠️ [RecordingView] Failed to save word timings: \(error)")

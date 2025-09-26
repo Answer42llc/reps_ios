@@ -67,6 +67,7 @@ struct AddAffirmationContainerView: View {
 // Wrapper view to handle saving affirmation to Core Data
 struct AddAffirmationRecordingWrapper: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @Environment(CloudSyncService.self) private var cloudSyncService
     @Bindable var addAffirmationData: AddAffirmationData
     @Binding var showingAddAffirmation: Bool
     @State private var internalShowingAddAffirmation: Bool = true
@@ -109,8 +110,12 @@ struct AddAffirmationRecordingWrapper: View {
             newAffirmation.targetCount = 1000
             newAffirmation.dateCreated = Date()
             newAffirmation.wordTimings = addAffirmationData.wordTimings
+            newAffirmation.updatedAt = Date()
+            newAffirmation.lastPracticedAt = nil
+            newAffirmation.isArchived = false
             
             try viewContext.save()
+            cloudSyncService.enqueueUpload(for: newAffirmation.objectID)
             print("✅ Affirmation saved successfully with audio file: \(recordingFileName)")
             
             // Close the view
@@ -123,5 +128,11 @@ struct AddAffirmationRecordingWrapper: View {
 }
 
 #Preview {
-    AddAffirmationContainerView(showingAddAffirmation: .constant(true))
+    let previewPersistence = PersistenceController.preview
+    let syncService = CloudSyncService.liveService(persistence: previewPersistence)
+    syncService.start()
+
+    return AddAffirmationContainerView(showingAddAffirmation: .constant(true))
+        .environment(\.managedObjectContext, previewPersistence.container.viewContext)
+        .environment(syncService)
 }

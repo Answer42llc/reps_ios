@@ -212,16 +212,6 @@ struct MockSpeechSegment {
 
 // MARK: - Test Extensions
 
-extension PracticeView {
-    func simulateRecordingStart() {
-        // Simulate the highlighting reset that happens in the actual startRecording() method
-        // Issue 2 Fix: Reset text highlighting when starting recording (same as production code)
-        self.highlightedWordIndices.removeAll()
-        self.currentWordIndex = -1
-        print("🎯 [TEST] Reset text highlighting for recording phase simulation")
-    }
-}
-
 extension WordHighlighter {
     func createChineseLines(from words: [String]) -> [[String]] {
         // This will be implemented as part of our fix

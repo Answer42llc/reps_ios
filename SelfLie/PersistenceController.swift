@@ -15,7 +15,10 @@ struct PersistenceController {
         sampleAffirmation.repeatCount = 84
         sampleAffirmation.targetCount = 1000
         sampleAffirmation.dateCreated = Date()
-        
+        sampleAffirmation.updatedAt = Date()
+        sampleAffirmation.lastPracticedAt = Date()
+        sampleAffirmation.isArchived = false
+
         do {
             try viewContext.save()
         } catch {
@@ -38,5 +41,48 @@ struct PersistenceController {
             }
         })
         container.viewContext.automaticallyMergesChangesFromParent = true
+        backfillAffirmationMetadataIfNeeded()
+    }
+
+    func backfillAffirmationMetadataIfNeeded() {
+        let context = container.viewContext
+        context.perform {
+            let request: NSFetchRequest<Affirmation> = Affirmation.fetchRequest()
+            request.predicate = NSPredicate(format: "updatedAt == nil OR (repeatCount > 0 AND lastPracticedAt == nil) OR audioFileName == nil")
+            request.fetchBatchSize = 100
+
+            do {
+                let results = try context.fetch(request)
+                var didChange = false
+
+                for affirmation in results {
+                    if affirmation.updatedAt == nil {
+                        affirmation.updatedAt = affirmation.dateCreated
+                        didChange = true
+                    }
+
+                    if affirmation.lastPracticedAt == nil, affirmation.repeatCount > 0 {
+                        affirmation.lastPracticedAt = affirmation.dateCreated
+                        didChange = true
+                    }
+
+                    if affirmation.audioFileName == nil {
+                        affirmation.audioFileName = ""
+                        didChange = true
+                    }
+
+                    if affirmation.isArchivedRaw == nil {
+                        affirmation.isArchived = false
+                        didChange = true
+                    }
+                }
+
+                if didChange {
+                    try context.save()
+                }
+            } catch {
+                // Ignore backfill errors for now; production logging can be added later.
+            }
+        }
     }
 }

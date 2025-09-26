@@ -6,7 +6,8 @@ struct PracticeView: View {
     @AppStorage("privacyModeEnabled") private var privacyModeEnabled: Bool = false
 
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Affirmation.dateCreated, ascending: false)]
+        sortDescriptors: [NSSortDescriptor(keyPath: \Affirmation.dateCreated, ascending: false)],
+        predicate: NSPredicate(format: "isArchived == NO OR isArchived == nil")
     ) private var affirmations: FetchedResults<Affirmation>
 
     let affirmation: Affirmation
@@ -267,6 +268,7 @@ struct PracticeView: View {
 struct PracticeSessionView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(CloudSyncService.self) private var cloudSyncService
     
     let affirmation: Affirmation
     let isActive: Bool
@@ -1223,9 +1225,12 @@ struct PracticeSessionView: View {
     @MainActor
     private func incrementCount() {
         affirmation.repeatCount += 1
+        affirmation.updatedAt = Date()
+        affirmation.lastPracticedAt = Date()
 
         do {
             try viewContext.save()
+            cloudSyncService.enqueueUpload(for: affirmation.objectID)
             NotificationManager.shared.markPracticeCompleted()
         } catch {
             showError("Failed to update progress: \(error.localizedDescription)")

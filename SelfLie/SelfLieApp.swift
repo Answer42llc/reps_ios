@@ -13,9 +13,21 @@ import RevenueCat
 @main
 struct SelfLieApp: App {
     let persistenceController = PersistenceController.shared
+    @State private var cloudSyncService: CloudSyncService
 
     init() {
-        
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        let service = CloudSyncService(
+            context: persistenceController.container.viewContext,
+            configureZone: !isRunningTests
+        )
+        if isRunningTests {
+            service.setSyncEnabled(false)
+        } else {
+            service.start()
+        }
+        _cloudSyncService = State(initialValue: service)
+
         //初始化 RevenueCat
         Purchases.logLevel = .debug
         Purchases.configure(withAPIKey: "appl_SbSlEYBLSPjipOgJiHXhsegMbXo")
@@ -71,8 +83,8 @@ struct SelfLieApp: App {
         WindowGroup {
             ContentView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                .environment(cloudSyncService)
                 .fontDesign(.serif)
         }
     }
 }
-

@@ -211,10 +211,9 @@ struct PaywallView: View {
             HapticManager.shared.trigger(.lightImpact)
             paywallController.dismiss()
         } label: {
-            Image(systemName: "xmark")
-                .font(.headline)
-                .fontWeight(.regular)
-                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.7) : .secondary)
+            Text("Cancel")
+                .fontDesign(.default)
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : .secondary)
         }
     }
     
@@ -225,7 +224,7 @@ struct PaywallView: View {
         } label: {
             Text("Restore")
                 .fontDesign(.default)
-                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.7) : .secondary)
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : .secondary)
         }
     }
     

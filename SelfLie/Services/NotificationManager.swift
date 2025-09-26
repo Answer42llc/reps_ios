@@ -5,8 +5,6 @@ import CoreData
 class NotificationManager: NSObject {
     static let shared = NotificationManager()
     private let center = UNUserNotificationCenter.current()
-    private let defaults = UserDefaults.standard
-    private let practiceKey = "DailyPracticeDate"
     private override init() {}
 
     // MARK: - Categories
@@ -33,18 +31,22 @@ class NotificationManager: NSObject {
     var hasPracticedToday: Bool { hasPracticed(on: Date()) }
 
     private func hasPracticed(on date: Date) -> Bool {
-        if let stored = defaults.object(forKey: practiceKey) as? Date {
-            return Calendar.current.isDate(stored, inSameDayAs: date)
+        let context = PersistenceController.shared.container.viewContext
+        var result = false
+        context.performAndWait {
+            let request: NSFetchRequest<Affirmation> = Affirmation.fetchRequest()
+            let calendar = Calendar.current
+            let startOfDay = calendar.startOfDay(for: date)
+            guard let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else { return }
+            request.predicate = NSPredicate(format: "lastPracticedAt >= %@ AND lastPracticedAt < %@ AND (isArchived == NO OR isArchived == nil)", startOfDay as NSDate, endOfDay as NSDate)
+            request.fetchLimit = 1
+            result = (try? context.fetch(request).first) != nil
         }
-        return false
+        return result
     }
 
     func markPracticeCompleted() {
-        let now = Date()
-        if !hasPracticedToday {
-            defaults.set(now, forKey: practiceKey)
-            scheduleDailyNotifications()
-        }
+        scheduleDailyNotifications()
     }
 
     func scheduleDailyNotifications() {
@@ -137,6 +139,7 @@ class NotificationManager: NSObject {
     private func getRandomAffirmationText() -> String? {
         let context = PersistenceController.shared.container.viewContext
         let request: NSFetchRequest<Affirmation> = Affirmation.fetchRequest()
+        request.predicate = NSPredicate(format: "isArchived == NO OR isArchived == nil")
         do {
             let count = try context.count(for: request)
             guard count > 0 else { return nil }
@@ -274,4 +277,3 @@ extension NotificationManager {
         print("🚀 [Notifications] Scheduled quick test in \(Int(seconds))s")
     }
 }
-

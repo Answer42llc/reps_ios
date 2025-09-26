@@ -9,6 +9,7 @@ enum OnboardingCompleteState {
 struct OnboardingCompleteView: View {
     @Bindable var onboardingData: OnboardingData
     @Environment(\.managedObjectContext) private var viewContext
+    @Environment(CloudSyncService.self) private var cloudSyncService
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
     @State private var completeState: OnboardingCompleteState = .philosophy
@@ -128,6 +129,13 @@ struct OnboardingCompleteView: View {
         newAffirmation.repeatCount = Int32(onboardingData.practiceCount) // Should be 1
         newAffirmation.targetCount = 1000 // Default target
         newAffirmation.dateCreated = Date()
+        newAffirmation.updatedAt = Date()
+        if onboardingData.practiceCount > 0 {
+            newAffirmation.lastPracticedAt = Date()
+        } else {
+            newAffirmation.lastPracticedAt = nil
+        }
+        newAffirmation.isArchived = false
         
         // Save the audio file if available
         if let audioURL = onboardingData.audioURL {
@@ -159,6 +167,7 @@ struct OnboardingCompleteView: View {
         
         // Save to Core Data
         try viewContext.save()
+        cloudSyncService.enqueueUpload(for: newAffirmation.objectID)
         print("✅ Onboarding affirmation saved successfully")
     }
 }
@@ -177,7 +186,12 @@ struct OnboardingCompleteView: View {
         }
     }
     data.practiceCount = 1
-    
+
+    let previewPersistence = PersistenceController.preview
+    let syncService = CloudSyncService.liveService(persistence: previewPersistence)
+    syncService.start()
+
     return OnboardingCompleteView(onboardingData: data)
-        .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+        .environment(\.managedObjectContext, previewPersistence.container.viewContext)
+        .environment(syncService)
 }
