@@ -19,6 +19,7 @@ extension Affirmation {
     @NSManaged public var dateCreated: Date
     @NSManaged public var updatedAt: Date?
     @NSManaged public var lastPracticedAt: Date?
+    @NSManaged public var syncRecordSystemFields: Data?
     @NSManaged @objc(isArchived) internal var isArchivedRaw: NSNumber?
     @NSManaged public var wordTimingsData: Data?
     

@@ -6,6 +6,7 @@
         <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="isArchived" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="lastPracticedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="syncRecordSystemFields" optional="YES" attributeType="Binary"/>
         <attribute name="repeatCount" optional="NO" attributeType="Integer 32" defaultValue="0" usesScalarValueType="YES"/>
         <attribute name="targetCount" optional="NO" attributeType="Integer 32" defaultValue="1000" usesScalarValueType="YES"/>
         <attribute name="text" optional="NO" attributeType="String"/>

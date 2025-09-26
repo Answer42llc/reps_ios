@@ -8,6 +8,7 @@ import OSLog
 protocol CloudSyncCoordinating: AnyObject {
     func start()
     func enqueueUpload(for affirmationID: NSManagedObjectID)
+    func enqueueDeletion(for affirmationID: NSManagedObjectID)
     func requestFullSync()
     var isBusy: Bool { get }
     var lastSyncDate: Date? { get }
@@ -18,50 +19,60 @@ protocol CloudSyncCoordinating: AnyObject {
 final class CloudSyncService: CloudSyncCoordinating {
     private struct Constants {
         static let zoneName = "AffirmationsZone"
+        static let subscriptionID = "cloudsync.subscription"
     }
 
     private let container: CKContainer
     private let database: CKDatabase
     private let zoneID: CKRecordZone.ID
     private let context: NSManagedObjectContext
-    private let shouldConfigureZone: Bool
     private let logger: Logger
+    private let stateStore: CloudSyncStateStore
     @ObservationIgnored
-    private let operationQueue = OperationQueue()
+    private lazy var syncEngine: CKSyncEngine = {
+        var configuration = CKSyncEngine.Configuration(
+            database: database,
+            stateSerialization: stateStore.load(),
+            delegate: self
+        )
+        configuration.automaticallySync = true
+        let engine = CKSyncEngine(configuration)
+        logger.debug("CloudSyncService initialised using CKSyncEngine")
+        return engine
+    }()
+
     private(set) var isConfigured = false
     private(set) var lastSyncError: Error?
     private var isSyncEnabled = true
-    @ObservationIgnored
-    private var pendingUploads: Set<NSManagedObjectID> = []
     private var isPerformingSync = false
     private var lastFetchDate: Date?
+    private var syncTask: Task<Void, Never>?
+    private var resyncRequested = false
+    private var forceResyncRequested = false
 
     var isBusy: Bool { isPerformingSync }
     var lastSyncDate: Date? { lastFetchDate }
 
     init(container: CKContainer = CKContainer.default(),
          databaseScope: CKDatabase.Scope = .private,
-         context: NSManagedObjectContext,
-         configureZone: Bool = true) {
+         context: NSManagedObjectContext) {
         self.container = container
         self.database = container.database(with: databaseScope)
         self.context = context
         self.zoneID = CKRecordZone.ID(zoneName: Constants.zoneName, ownerName: CKCurrentUserDefaultName)
-        self.shouldConfigureZone = configureZone
+        self.stateStore = CloudSyncStateStore()
         let subsystem = Bundle.main.bundleIdentifier ?? "SelfLie"
         self.logger = Logger(subsystem: subsystem, category: "CloudSync")
-        operationQueue.name = "com.selflie.cloudsync"
-        operationQueue.maxConcurrentOperationCount = 1
-        logger.debug("CloudSyncService initialised. configureZone=\(configureZone, privacy: .public)")
+
     }
 
     func start() {
         guard !isConfigured else { return }
         logger.debug("Starting CloudSyncService")
-        if shouldConfigureZone {
-            configureZoneIfNeeded()
-        }
+        configureZoneIfNeeded()
+        registerSubscriptionIfNeeded()
         isConfigured = true
+        scheduleSync(forceFetch: true)
     }
 
     func enqueueUpload(for affirmationID: NSManagedObjectID) {
@@ -73,149 +84,158 @@ final class CloudSyncService: CloudSyncCoordinating {
             logger.debug("enqueueUpload skipped – sync disabled")
             return
         }
-        pendingUploads.insert(affirmationID)
-        logger.debug("Enqueued upload for \(affirmationID, privacy: .public); pending count = \(self.pendingUploads.count, privacy: .public)")
-        scheduleUploadIfNeeded()
+        var recordID: CKRecord.ID?
+        context.performAndWait {
+            guard let affirmation = try? context.existingObject(with: affirmationID) as? Affirmation, affirmation.isActive else {
+                return
+            }
+            recordID = CKRecord.ID(recordName: affirmation.id.uuidString, zoneID: zoneID)
+        }
+
+        guard let recordID else { return }
+
+        syncEngine.state.add(pendingRecordZoneChanges: [.saveRecord(recordID)])
+        scheduleSync()
+    }
+
+    func enqueueDeletion(for affirmationID: NSManagedObjectID) {
+        guard isConfigured else {
+            logger.debug("enqueueDeletion skipped – service not configured yet")
+            return
+        }
+        guard isSyncEnabled else {
+            logger.debug("enqueueDeletion skipped – sync disabled")
+            return
+        }
+
+        var recordID: CKRecord.ID?
+        context.performAndWait {
+            guard let affirmation = try? context.existingObject(with: affirmationID) as? Affirmation else {
+                return
+            }
+            recordID = CKRecord.ID(recordName: affirmation.id.uuidString, zoneID: zoneID)
+        }
+
+        guard let recordID else { return }
+
+        syncEngine.state.add(pendingRecordZoneChanges: [.deleteRecord(recordID)])
+        scheduleSync()
     }
 
     func requestFullSync() {
         guard isConfigured, isSyncEnabled else { return }
-        performFetch()
+        scheduleSync(forceFetch: true)
     }
 
     func setSyncEnabled(_ enabled: Bool) {
         let wasEnabled = isSyncEnabled
         isSyncEnabled = enabled
         logger.notice("Sync \(enabled ? "enabled" : "disabled", privacy: .public)")
-
         if enabled && !wasEnabled {
-            backfillPendingUploads()
+            scheduleSync(forceFetch: true)
         }
+    }
+
+    private func scheduleSync(forceFetch: Bool = false) {
+        if let _ = syncTask {
+            resyncRequested = true
+            if forceFetch {
+                forceResyncRequested = true
+            }
+            return
+        }
+
+        resyncRequested = false
+        forceResyncRequested = false
+
+        syncTask = Task.detached { [weak self] in
+            await self?.runSyncCycle(forceFetch: forceFetch)
+        }
+    }
+
+    @MainActor
+    private func runSyncCycle(forceFetch: Bool) async {
+        defer { syncTask = nil }
+        guard isSyncEnabled else { return }
+
+        var shouldForceFetch = forceFetch
+
+        repeat {
+            do {
+                if shouldForceFetch {
+                    try await syncEngine.fetchChanges()
+                }
+
+                if !syncEngine.state.pendingDatabaseChanges.isEmpty || !syncEngine.state.pendingRecordZoneChanges.isEmpty {
+                    try await syncEngine.sendChanges()
+                }
+
+                try await syncEngine.fetchChanges()
+            } catch {
+                handleSyncError(error)
+            }
+
+            let repeatRequested = resyncRequested
+            shouldForceFetch = forceResyncRequested
+            resyncRequested = false
+            forceResyncRequested = false
+
+            if !repeatRequested { break }
+        } while true
+    }
+
+    private func handleSyncError(_ error: Error) {
+        lastSyncError = error
+        logger.error("Sync engine operation failed: \(error as NSError, privacy: .public)")
+    }
+
+    private func registerSubscriptionIfNeeded() {
+        let subscription = CKDatabaseSubscription(subscriptionID: Constants.subscriptionID)
+        let notificationInfo = CKSubscription.NotificationInfo()
+        notificationInfo.shouldSendContentAvailable = true
+        subscription.notificationInfo = notificationInfo
+
+        let operation = CKModifySubscriptionsOperation(subscriptionsToSave: [subscription], subscriptionIDsToDelete: [])
+        operation.modifySubscriptionsResultBlock = { [weak self] result in
+            if case .failure(let error) = result {
+                self?.logger.error("Failed to register CloudKit subscription: \(error as NSError, privacy: .public)")
+            }
+        }
+        database.add(operation)
     }
 
     private func configureZoneIfNeeded() {
-        logger.debug("Configuring custom zone if needed")
-        let createZoneOperation = CKModifyRecordZonesOperation(recordZonesToSave: [CKRecordZone(zoneID: zoneID)], recordZoneIDsToDelete: [])
-        createZoneOperation.modifyRecordZonesResultBlock = { [weak self] result in
-            switch result {
-            case .success:
-                self?.lastSyncError = nil
-                self?.logger.notice("CloudKit zone available")
-                if self?.isSyncEnabled == true {
-                    self?.backfillPendingUploads()
-                }
-                self?.performFetch()
-            case .failure(let error):
-                self?.lastSyncError = error
-                self?.logger.error("Failed to configure CloudKit zone: \(error as NSError, privacy: .public)")
+        let zone = CKRecordZone(zoneID: zoneID)
+        let operation = CKModifyRecordZonesOperation(recordZonesToSave: [zone], recordZoneIDsToDelete: [])
+        operation.modifyRecordZonesResultBlock = { [weak self] result in
+            if case .failure(let error) = result {
+                self?.logger.error("Failed to ensure CloudKit zone: \(error as NSError, privacy: .public)")
             }
         }
-        database.add(createZoneOperation)
+        database.add(operation)
     }
 
-    private func scheduleUploadIfNeeded() {
-        guard !pendingUploads.isEmpty else { return }
-        let pendingCount = pendingUploads.count
-        logger.debug("Scheduling upload for \(pendingCount, privacy: .public) items")
-        operationQueue.addOperation { [weak self] in
-            Task { await self?.performUploadBatch() }
-        }
-    }
-
-    @MainActor
-    private func performUploadBatch() async {
-        guard !pendingUploads.isEmpty else {
-            logger.debug("performUploadBatch called with no pending uploads")
-            return
-        }
-        let objectIDs = pendingUploads
-        pendingUploads.removeAll()
-
-        isPerformingSync = true
-        defer { isPerformingSync = false }
-
-        do {
-            logger.debug("Preparing upload batch of \(objectIDs.count, privacy: .public) affirmations")
-            let records = try await buildRecords(for: Array(objectIDs))
-            guard !records.isEmpty else {
-                logger.debug("No eligible records found in upload batch; skipping CloudKit call")
-                return
-            }
-
-            try await modify(records: records)
-            lastSyncError = nil
-            lastFetchDate = Date()
-            logger.notice("Uploaded \(records.count, privacy: .public) affirmation records to CloudKit")
-        } catch {
-            lastSyncError = error
-            logger.error("Upload batch failed: \(error as NSError, privacy: .public)")
-            // Requeue pending uploads for retry
-            pendingUploads.formUnion(objectIDs)
-            logger.debug("Requeued \(objectIDs.count, privacy: .public) items after failure")
-        }
-    }
-
-    @MainActor
-    private func buildRecords(for objectIDs: [NSManagedObjectID]) async throws -> [CKRecord] {
-        let context = self.context
-        let logger = self.logger
-        return await context.perform {
-            var records: [CKRecord] = []
-            var skippedInactive = 0
-            var missingObjects: [NSManagedObjectID] = []
-            for objectID in objectIDs {
-                guard let affirmation = try? context.existingObject(with: objectID) as? Affirmation else {
-                    missingObjects.append(objectID)
-                    continue
-                }
-                guard affirmation.isActive else {
-                    skippedInactive += 1
-                    continue
-                }
-                guard let record = try? self.makeRecord(from: affirmation) else { continue }
-                records.append(record)
-            }
-            if !missingObjects.isEmpty {
-                logger.error("Failed to resolve \(missingObjects.count, privacy: .public) managed objects for upload: \(missingObjects, privacy: .public)")
-            }
-            if skippedInactive > 0 {
-                logger.debug("Skipped \(skippedInactive, privacy: .public) inactive affirmations during upload build")
-            }
-            logger.debug("Built \(records.count, privacy: .public) records for upload")
-            return records
-        }
-    }
-
-    private func backfillPendingUploads() {
-        let context = self.context
-        context.perform { [weak self] in
-            guard let self else { return }
-            let request: NSFetchRequest<Affirmation> = Affirmation.fetchRequest()
-            request.predicate = NSPredicate(format: "isArchived == NO OR isArchived == nil")
-
-            do {
-                let affirmations = try context.fetch(request)
-                let ids = affirmations.map { $0.objectID }
-                guard !ids.isEmpty else {
-                    self.logger.debug("Backfill found no active affirmations to enqueue")
-                    return
-                }
-
-                self.logger.debug("Backfill enqueuing \(ids.count, privacy: .public) affirmations for upload")
-                Task { @MainActor in
-                    for id in ids {
-                        self.enqueueUpload(for: id)
-                    }
-                }
-            } catch {
-                self.logger.error("Backfill fetch failed: \(error as NSError, privacy: .public)")
-            }
-        }
-    }
-
-    nonisolated private func makeRecord(from affirmation: Affirmation) throws -> CKRecord {
+    nonisolated private func makeRecord(from affirmation: Affirmation) -> CKRecord {
         let recordID = CKRecord.ID(recordName: affirmation.id.uuidString, zoneID: zoneID)
-        let record = CKRecord(recordType: "Affirmation", recordID: recordID)
+        let record: CKRecord
+
+        if let systemData = affirmation.syncRecordSystemFields {
+            do {
+                let coder = try NSKeyedUnarchiver(forReadingFrom: systemData)
+                coder.requiresSecureCoding = true
+                if let decoded = CKRecord(coder: coder) {
+                    record = decoded
+                } else {
+                    record = CKRecord(recordType: "Affirmation", recordID: recordID)
+                }
+                coder.finishDecoding()
+            } catch {
+                record = CKRecord(recordType: "Affirmation", recordID: recordID)
+            }
+        } else {
+            record = CKRecord(recordType: "Affirmation", recordID: recordID)
+        }
+
         record["text"] = affirmation.text
         record["repeatCount"] = affirmation.repeatCount as NSNumber
         record["targetCount"] = affirmation.targetCount as NSNumber
@@ -224,124 +244,74 @@ final class CloudSyncService: CloudSyncCoordinating {
         record["updatedAt"] = updatedAt as NSDate
         if let audioFileName = affirmation.audioFileName, !audioFileName.isEmpty {
             record["audioFileName"] = audioFileName as NSString
+        } else {
+            record["audioFileName"] = nil
         }
         if let lastPracticed = affirmation.lastPracticedAt {
             record["lastPracticedAt"] = lastPracticed as NSDate
+        } else {
+            record["lastPracticedAt"] = nil
         }
         record["isArchived"] = NSNumber(value: affirmation.isArchived)
         if let wordData = affirmation.wordTimingsData {
             record["wordTimings"] = wordData as NSData
+        } else {
+            record["wordTimings"] = nil
         }
 
         if let assetURL = affirmation.audioURL, FileManager.default.fileExists(atPath: assetURL.path) {
             record["audio"] = CKAsset(fileURL: assetURL)
+        } else {
+            record["audio"] = nil
         }
 
         return record
     }
 
-    private func modify(records: [CKRecord]) async throws {
-        let logger = self.logger
-        try await withCheckedThrowingContinuation { continuation in
-            let operation = CKModifyRecordsOperation(recordsToSave: records, recordIDsToDelete: [])
-            operation.savePolicy = .changedKeys
-            operation.modifyRecordsResultBlock = { result in
-                switch result {
-                case .success:
-                    logger.debug("CKModifyRecordsOperation succeeded for \(records.count, privacy: .public) records")
-                    continuation.resume(returning: ())
-                case .failure(let error):
-                    logger.error("CKModifyRecordsOperation failed: \(error as NSError, privacy: .public)")
-                    continuation.resume(throwing: error)
-                }
-            }
-            database.add(operation)
+    @MainActor
+    private func recordForUpload(with recordID: CKRecord.ID) -> CKRecord? {
+        guard let uuid = UUID(uuidString: recordID.recordName) else {
+            syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(recordID)])
+            return nil
         }
+
+        let request: NSFetchRequest<Affirmation> = Affirmation.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
+        request.fetchLimit = 1
+
+        guard let affirmation = try? context.fetch(request).first else {
+            syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(recordID)])
+            return nil
+        }
+
+        if affirmation.isDeleted {
+            syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(recordID)])
+            return nil
+        }
+
+        return makeRecord(from: affirmation)
     }
 
     @MainActor
-    private func performFetch() {
-        guard !isPerformingSync else { return }
-        isPerformingSync = true
-        logger.debug("Starting CloudKit fetch")
+    private func clearSystemFields(for recordID: CKRecord.ID) {
+        guard let uuid = UUID(uuidString: recordID.recordName) else { return }
 
-        Task {
-            defer { isPerformingSync = false }
-            do {
-                let records = try await fetchAllRecords()
-                logger.debug("Fetch returned \(records.count, privacy: .public) records")
-                try await merge(records: records)
-                lastSyncError = nil
-                lastFetchDate = Date()
-            } catch let error as CKError {
-                switch error.code {
-                case .unknownItem:
-                    // Record type not found yet; treat as empty sync.
-                    lastSyncError = nil
-                    lastFetchDate = Date()
-                    logger.notice("Fetch completed with unknownItem; waiting for first upload to create schema")
-                case .zoneNotFound:
-                    lastSyncError = nil
-                    logger.notice("Zone not found; scheduling reconfiguration")
-                    configureZoneIfNeeded()
-                default:
-                    lastSyncError = error
-                    logger.error("Fetch failed with CKError: \(error as NSError, privacy: .public)")
+        let request: NSFetchRequest<Affirmation> = Affirmation.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
+        request.fetchLimit = 1
+
+        if let affirmation = try? context.fetch(request).first {
+            affirmation.syncRecordSystemFields = nil
+            if context.hasChanges {
+                do {
+                    try context.save()
+                } catch {
+                    logger.error("Failed to clear system fields for record \(recordID.recordName, privacy: .public): \(error as NSError, privacy: .public)")
                 }
-            } catch {
-                lastSyncError = error
-                logger.error("Fetch failed: \(error as NSError, privacy: .public)")
             }
         }
     }
 
-    private func fetchAllRecords(cursor: CKQueryOperation.Cursor? = nil) async throws -> [CKRecord] {
-        try await withCheckedThrowingContinuation { continuation in
-            let operation: CKQueryOperation
-            if let cursor {
-                operation = CKQueryOperation(cursor: cursor)
-            } else {
-                let query = CKQuery(recordType: "Affirmation", predicate: NSPredicate(value: true))
-                operation = CKQueryOperation(query: query)
-                operation.zoneID = zoneID
-            }
-
-            var fetchedRecords: [CKRecord] = []
-            operation.recordMatchedBlock = { _, result in
-                if case .success(let record) = result {
-                    fetchedRecords.append(record)
-                }
-            }
-
-            operation.queryResultBlock = { [weak self] result in
-                switch result {
-                case .success(let nextCursor):
-                    if let nextCursor {
-                        Task { [weak self] in
-                            guard let self else {
-                                continuation.resume(returning: fetchedRecords)
-                                return
-                            }
-                            do {
-                                let more = try await self.fetchAllRecords(cursor: nextCursor)
-                                continuation.resume(returning: fetchedRecords + more)
-                            } catch {
-                                continuation.resume(throwing: error)
-                            }
-                        }
-                    } else {
-                        continuation.resume(returning: fetchedRecords)
-                    }
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
-            }
-
-            database.add(operation)
-        }
-    }
-
-    @MainActor
     private func merge(records: [CKRecord]) async throws {
         guard !records.isEmpty else { return }
 
@@ -359,6 +329,25 @@ final class CloudSyncService: CloudSyncCoordinating {
         }
     }
 
+    private func applyDeletions(for recordIDs: [CKRecord.ID]) async throws {
+        guard !recordIDs.isEmpty else { return }
+        let context = self.context
+        try await context.perform {
+            for recordID in recordIDs {
+                guard let uuid = UUID(uuidString: recordID.recordName) else { continue }
+                let request: NSFetchRequest<Affirmation> = Affirmation.fetchRequest()
+                request.predicate = NSPredicate(format: "id == %@", uuid as CVarArg)
+                request.fetchLimit = 1
+                if let affirmation = try? context.fetch(request).first {
+                    context.delete(affirmation)
+                }
+            }
+            if context.hasChanges {
+                try context.save()
+            }
+        }
+    }
+
     nonisolated private func upsert(record: CKRecord) {
         guard let uuid = UUID(uuidString: record.recordID.recordName) else { return }
         let context = self.context
@@ -370,9 +359,6 @@ final class CloudSyncService: CloudSyncCoordinating {
 
         let affirmation: Affirmation
         if let existingAffirmation = (try? context.fetch(request))?.first {
-            if let currentDate = existingAffirmation.updatedAt, currentDate >= recordDate {
-                return
-            }
             affirmation = existingAffirmation
         } else {
             affirmation = Affirmation(context: context)
@@ -381,23 +367,31 @@ final class CloudSyncService: CloudSyncCoordinating {
             logger.debug("Created local affirmation from CloudKit record \(uuid.uuidString, privacy: .public)")
         }
 
-        affirmation.text = record["text"] as? String ?? affirmation.text
-        affirmation.repeatCount = (record["repeatCount"] as? Int32) ?? affirmation.repeatCount
-        affirmation.targetCount = (record["targetCount"] as? Int32) ?? affirmation.targetCount
-        if let updated = record["updatedAt"] as? Date {
-            affirmation.updatedAt = updated
+        let currentDate = affirmation.updatedAt ?? .distantPast
+        let serverIsNewer = currentDate < recordDate
+
+        if serverIsNewer {
+            affirmation.text = record["text"] as? String ?? affirmation.text
+            affirmation.repeatCount = (record["repeatCount"] as? Int32) ?? affirmation.repeatCount
+            affirmation.targetCount = (record["targetCount"] as? Int32) ?? affirmation.targetCount
+            if let updated = record["updatedAt"] as? Date {
+                affirmation.updatedAt = updated
+            } else {
+                affirmation.updatedAt = recordDate
+            }
+            if let lastPracticed = record["lastPracticedAt"] as? Date {
+                affirmation.lastPracticedAt = lastPracticed
+            }
+            if let wordData = record["wordTimings"] as? Data {
+                affirmation.wordTimingsData = wordData
+            }
+            if let audioFileName = record["audioFileName"] as? String {
+                affirmation.audioFileName = audioFileName
+            }
         }
-        if let lastPracticed = record["lastPracticedAt"] as? Date {
-            affirmation.lastPracticedAt = lastPracticed
-        }
+
         if let archived = record["isArchived"] as? Bool {
             affirmation.isArchived = archived
-        }
-        if let wordData = record["wordTimings"] as? Data {
-            affirmation.wordTimingsData = wordData
-        }
-        if let audioFileName = record["audioFileName"] as? String {
-            affirmation.audioFileName = audioFileName
         }
 
         if affirmation.updatedAt == nil {
@@ -407,10 +401,29 @@ final class CloudSyncService: CloudSyncCoordinating {
             affirmation.isArchived = false
         }
 
+        do {
+            let coder = NSKeyedArchiver(requiringSecureCoding: true)
+            record.encodeSystemFields(with: coder)
+            coder.finishEncoding()
+            affirmation.syncRecordSystemFields = coder.encodedData
+        } catch {
+            logger.error("Failed to archive system fields for record \(record.recordID.recordName, privacy: .public): \(error as NSError, privacy: .public)")
+        }
+
         if let asset = record["audio"] as? CKAsset, let fileURL = asset.fileURL {
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let destination = documentsPath.appendingPathComponent("\(affirmation.id.uuidString).m4a")
+
+            let resolvedSource = fileURL.resolvingSymlinksInPath()
+            let resolvedDestination = destination.resolvingSymlinksInPath()
+
+            // If the asset already lives at the expected destination, no copy is necessary.
+            guard resolvedSource != resolvedDestination else {
+                affirmation.audioFileName = destination.lastPathComponent
+                return
+            }
+
             do {
-                let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                let destination = documentsPath.appendingPathComponent("\(affirmation.id.uuidString).m4a")
                 if FileManager.default.fileExists(atPath: destination.path) {
                     try FileManager.default.removeItem(at: destination)
                 }
@@ -419,6 +432,144 @@ final class CloudSyncService: CloudSyncCoordinating {
             } catch {
                 print("⚠️ [CloudSyncService] Failed to copy audio asset: \(error)")
                 logger.error("Failed to copy audio asset for record \(affirmation.id.uuidString, privacy: .public): \(error as NSError, privacy: .public)")
+            }
+        }
+    }
+}
+
+extension CloudSyncService: CKSyncEngineDelegate {
+    func handleEvent(_ event: CKSyncEngine.Event, syncEngine: CKSyncEngine) async {
+        switch event {
+        case .stateUpdate(let update):
+            do {
+                try stateStore.save(update.stateSerialization)
+            } catch {
+                logger.error("Failed to persist sync state: \(error as NSError, privacy: .public)")
+            }
+        case .accountChange:
+            logger.notice("Account changed; resetting sync state")
+            stateStore.reset()
+            let pendingRecordChanges = syncEngine.state.pendingRecordZoneChanges
+            if !pendingRecordChanges.isEmpty {
+                syncEngine.state.remove(pendingRecordZoneChanges: pendingRecordChanges)
+            }
+            let pendingDatabaseChanges = syncEngine.state.pendingDatabaseChanges
+            if !pendingDatabaseChanges.isEmpty {
+                syncEngine.state.remove(pendingDatabaseChanges: pendingDatabaseChanges)
+            }
+            lastFetchDate = nil
+            scheduleSync(forceFetch: true)
+        case .willFetchChanges:
+            isPerformingSync = true
+        case .didFetchChanges:
+            isPerformingSync = false
+            lastSyncError = nil
+            lastFetchDate = Date()
+        case .fetchedRecordZoneChanges(let details):
+            let records = details.modifications.compactMap { $0.record }
+            do {
+                try await merge(records: records)
+                try await applyDeletions(for: details.deletions.map { $0.recordID })
+            } catch {
+                handleSyncError(error)
+            }
+        case .sentRecordZoneChanges(let result):
+            if !result.savedRecords.isEmpty {
+                do {
+                    try await merge(records: result.savedRecords)
+                } catch {
+                    handleSyncError(error)
+                }
+            }
+
+            var pendingRecordChanges: [CKSyncEngine.PendingRecordZoneChange] = []
+            var pendingDatabaseChanges: [CKSyncEngine.PendingDatabaseChange] = []
+
+            for failure in result.failedRecordSaves {
+                let recordID = failure.record.recordID
+                switch failure.error.code {
+                case .serverRecordChanged:
+                    if let serverRecord = failure.error.serverRecord {
+                        do {
+                            try await merge(records: [serverRecord])
+                        } catch {
+                            logger.error("Failed to merge server record after conflict: \(error as NSError, privacy: .public)")
+                        }
+                    } else {
+                        logger.error("Server record missing for conflict on \(recordID.recordName, privacy: .public)")
+                    }
+                    pendingRecordChanges.append(.saveRecord(recordID))
+                case .zoneNotFound:
+                    pendingDatabaseChanges.append(.saveZone(CKRecordZone(zoneID: recordID.zoneID)))
+                    pendingRecordChanges.append(.saveRecord(recordID))
+                    clearSystemFields(for: recordID)
+                case .unknownItem:
+                    clearSystemFields(for: recordID)
+                    pendingRecordChanges.append(.saveRecord(recordID))
+                case .networkFailure, .networkUnavailable, .serviceUnavailable, .zoneBusy, .notAuthenticated, .operationCancelled:
+                    logger.debug("Retryable error while saving record \(recordID.recordName, privacy: .public): \(failure.error as NSError, privacy: .public)")
+                default:
+                    logger.error("Unhandled error saving record \(recordID.recordName, privacy: .public): \(failure.error as NSError, privacy: .public)")
+                }
+            }
+
+            for (recordID, error) in result.failedRecordDeletes {
+                switch error.code {
+                case .zoneNotFound:
+                    pendingDatabaseChanges.append(.saveZone(CKRecordZone(zoneID: recordID.zoneID)))
+                    pendingRecordChanges.append(.deleteRecord(recordID))
+                case .serverRecordChanged:
+                    pendingRecordChanges.append(.deleteRecord(recordID))
+                case .networkFailure, .networkUnavailable, .serviceUnavailable, .zoneBusy, .notAuthenticated, .operationCancelled:
+                    logger.debug("Retryable error deleting record \(recordID.recordName, privacy: .public): \(error as NSError, privacy: .public)")
+                case .unknownItem:
+                    // The record is already gone; nothing else to do.
+                    break
+                default:
+                    logger.error("Unhandled error deleting record \(recordID.recordName, privacy: .public): \(error as NSError, privacy: .public)")
+                }
+            }
+
+            let hasDatabaseChanges = !pendingDatabaseChanges.isEmpty
+            let hasRecordChanges = !pendingRecordChanges.isEmpty
+
+            if hasDatabaseChanges {
+                syncEngine.state.add(pendingDatabaseChanges: pendingDatabaseChanges)
+            }
+            if hasRecordChanges {
+                syncEngine.state.add(pendingRecordZoneChanges: pendingRecordChanges)
+            }
+
+            if hasDatabaseChanges || hasRecordChanges {
+                scheduleSync()
+            }
+        case .willSendChanges:
+            isPerformingSync = true
+        case .didSendChanges:
+            isPerformingSync = false
+            lastSyncError = nil
+            lastFetchDate = Date()
+        default:
+            break
+        }
+    }
+
+    func nextFetchChangesOptions(_ context: CKSyncEngine.FetchChangesContext, syncEngine: CKSyncEngine) async -> CKSyncEngine.FetchChangesOptions {
+        if isSyncEnabled {
+            return CKSyncEngine.FetchChangesOptions()
+        } else {
+            return CKSyncEngine.FetchChangesOptions(scope: .allExcluding([zoneID]))
+        }
+    }
+
+    func nextRecordZoneChangeBatch(_ context: CKSyncEngine.SendChangesContext, syncEngine: CKSyncEngine) async -> CKSyncEngine.RecordZoneChangeBatch? {
+        let scope = context.options.scope
+        let pendingChanges = syncEngine.state.pendingRecordZoneChanges.filter { scope.contains($0) }
+        guard !pendingChanges.isEmpty else { return nil }
+
+        return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: pendingChanges) { recordID in
+            await MainActor.run {
+                self.recordForUpload(with: recordID)
             }
         }
     }

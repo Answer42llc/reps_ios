@@ -19,8 +19,7 @@ struct SelfLieApp: App {
     init() {
         let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         let service = CloudSyncService(
-            context: persistenceController.container.viewContext,
-            configureZone: !isRunningTests
+            context: persistenceController.container.viewContext
         )
         if isRunningTests {
             service.setSyncEnabled(false)

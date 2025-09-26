@@ -143,26 +143,32 @@ struct DashboardView: View {
     
     private func deleteAffirmations(offsets: IndexSet) {
         offsets.map { affirmations[$0] }.forEach { affirmation in
-            markAffirmationArchived(affirmation)
+            removeAffirmation(affirmation)
         }
     }
-    
+
     private func deleteAffirmation(_ affirmation: Affirmation) {
         // Clear selection if deleting the selected affirmation
         if selectedAffirmation?.objectID == affirmation.objectID {
             selectedAffirmation = nil
         }
-        markAffirmationArchived(affirmation)
+        removeAffirmation(affirmation)
     }
 
-    private func markAffirmationArchived(_ affirmation: Affirmation) {
-        affirmation.isArchived = true
-        affirmation.updatedAt = Date()
+    private func removeAffirmation(_ affirmation: Affirmation) {
+        let objectID = affirmation.objectID
+        let audioURL = affirmation.audioURL
+
+        cloudSyncService.enqueueDeletion(for: objectID)
+        viewContext.delete(affirmation)
+
         do {
             try viewContext.save()
-            cloudSyncService.enqueueUpload(for: affirmation.objectID)
+            if let audioURL, FileManager.default.fileExists(atPath: audioURL.path) {
+                try? FileManager.default.removeItem(at: audioURL)
+            }
         } catch {
-            print("Failed to archive affirmation: \(error)")
+            print("Failed to delete affirmation: \(error)")
         }
     }
 
