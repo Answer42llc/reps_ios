@@ -14,6 +14,7 @@ import RevenueCat
 struct SelfLieApp: App {
     let persistenceController = PersistenceController.shared
     @State private var cloudSyncService: CloudSyncService
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -85,6 +86,12 @@ struct SelfLieApp: App {
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .environment(cloudSyncService)
                 .fontDesign(.serif)
+        }
+        .onChange(of: scenePhase) { newPhase in
+            guard newPhase == .active else { return }
+            Task { @MainActor in
+                cloudSyncService.requestFullSync()
+            }
         }
     }
 }
