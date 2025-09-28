@@ -75,6 +75,14 @@ struct DashboardView: View {
         .navigationTitle("My Reps")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.title2)
+                }
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
                     HapticManager.shared.trigger(.mediumImpact)
@@ -83,6 +91,7 @@ struct DashboardView: View {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
                         .foregroundColor(.purple)
+                    
                 }
             }
         }
@@ -120,6 +129,8 @@ struct DashboardView: View {
                     ProgressView()
                     Text("Syncing...")
                 }
+                .font(.footnote)
+                .foregroundColor(.secondary)
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
