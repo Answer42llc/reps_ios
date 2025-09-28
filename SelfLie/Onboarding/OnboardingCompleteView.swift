@@ -102,8 +102,11 @@ struct OnboardingCompleteView: View {
     
     private func completeOnboarding() async {
         // Request notification permission
-        let _ = await PermissionManager.requestNotificationPermission()
-        
+        let granted = await PermissionManager.requestNotificationPermission()
+        if granted {
+            NotificationManager.shared.scheduleDailyNotifications()
+        }
+
         // Save the affirmation to Core Data
         await MainActor.run {
             do {

@@ -70,8 +70,9 @@ struct SelfLieApp: App {
 
         Task {
             NotificationManager.shared.registerCategories()
-            await NotificationManager.shared.requestAuthorization()
-            NotificationManager.shared.scheduleDailyNotifications()
+            if UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
+                NotificationManager.shared.scheduleDailyNotifications()
+            }
         }
 
         // Set notification center delegate
