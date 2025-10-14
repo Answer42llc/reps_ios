@@ -1,6 +1,7 @@
 import SwiftUI
 import RevenueCat
 import UIKit
+import UserNotifications
 
 struct SettingsView: View {
     @Environment(SubscriptionManager.self) private var subscriptionManager
@@ -11,6 +12,12 @@ struct SettingsView: View {
     @AppStorage("privacyModeEnabled") private var privacyModeEnabled = false
 
     @State private var didCopyUserID = false
+    @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var notificationToggleOn = false
+    @State private var isRequestingNotificationPermission = false
+    @State private var showingNotificationAlert = false
+    @State private var notificationAlertMessage = ""
+    @State private var notificationAlertTarget: PermissionManager.PermissionType?
 
     private let supportEmail = "support@myreps.app"
     private let termsURL = URL(string: "https://myreps.app/terms")!
@@ -23,6 +30,9 @@ struct SettingsView: View {
                 accountSection
                 supportSection
                 legalSection
+                if !notificationPermissionGranted {
+                    reminderSection
+                }
                 privacySection
             }
             .padding(.horizontal, 20)
@@ -31,6 +41,24 @@ struct SettingsView: View {
         .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
+        .task {
+            await refreshNotificationStatus()
+        }
+        .alert("Enable Notifications", isPresented: $showingNotificationAlert) {
+            Button("OK", role: .cancel) {
+                notificationAlertTarget = nil
+            }
+            if let target = notificationAlertTarget {
+                Button("Open Settings") {
+                    notificationAlertTarget = nil
+                    Task { @MainActor in
+                        PermissionManager.openSettings(for: target)
+                    }
+                }
+            }
+        } message: {
+            Text(notificationAlertMessage)
+        }
     }
 
     private var subscriptionSection: some View {
@@ -155,6 +183,25 @@ struct SettingsView: View {
         }
     }
 
+    private var reminderSection: some View {
+        SettingsCard(title: "Reminders") {
+            Toggle(isOn: $notificationToggleOn) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Daily Reminder")
+                        .font(.headline)
+                    Text("Receive a gentle nudge to practice each day.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .toggleStyle(SwitchToggleStyle(tint: .purple))
+            .disabled(isRequestingNotificationPermission)
+            .onChange(of: notificationToggleOn) { _, newValue in
+                handleNotificationToggleChange(newValue)
+            }
+        }
+    }
+
     private var privacySection: some View {
         SettingsCard(title: nil) {
             Toggle(isOn: $privacyModeEnabled) {
@@ -267,6 +314,57 @@ struct SettingsView: View {
 
         if let url = components.url {
             openURL(url)
+        }
+    }
+
+    private var notificationPermissionGranted: Bool {
+        isNotificationStatusGranted(notificationStatus)
+    }
+
+    private func handleNotificationToggleChange(_ newValue: Bool) {
+        guard newValue else { return }
+        isRequestingNotificationPermission = true
+
+        Task {
+            _ = await PermissionManager.requestNotificationPermission()
+            let status = await PermissionManager.notificationPermissionStatus()
+            let permissionGranted = isNotificationStatusGranted(status)
+
+            await MainActor.run {
+                notificationStatus = status
+                if permissionGranted {
+                    NotificationManager.shared.registerCategories()
+                    NotificationManager.shared.scheduleDailyNotifications()
+                    notificationToggleOn = false
+                } else {
+                    notificationToggleOn = false
+                    notificationAlertMessage = "Notifications are disabled. Please enable them in Settings to receive daily reminders."
+                    notificationAlertTarget = .notifications
+                    showingNotificationAlert = true
+                }
+                isRequestingNotificationPermission = false
+            }
+        }
+    }
+
+    private func isNotificationStatusGranted(_ status: UNAuthorizationStatus) -> Bool {
+        switch status {
+        case .authorized, .provisional:
+            return true
+        #if os(iOS)
+        case .ephemeral:
+            return true
+        #endif
+        default:
+            return false
+        }
+    }
+
+    private func refreshNotificationStatus() async {
+        let status = await PermissionManager.notificationPermissionStatus()
+        await MainActor.run {
+            notificationStatus = status
+            notificationToggleOn = false
         }
     }
 

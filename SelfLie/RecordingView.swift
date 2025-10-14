@@ -14,6 +14,7 @@ struct RecordingView: View {
     @State private var recordingState: RecordingState = .idle
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var permissionAlertTarget: PermissionManager.PermissionType?
     @State private var similarity: Float = 0.0
     
     @State private var recordingFileName = ""
@@ -97,7 +98,18 @@ struct RecordingView: View {
             await requestPermissions()
         }
         .alert("Error", isPresented: $showingError) {
-            Button("OK") { }
+            Button("OK", role: .cancel) {
+                permissionAlertTarget = nil
+            }
+            if let target = permissionAlertTarget {
+                Button("Open Settings") {
+                    let selectedTarget = target
+                    permissionAlertTarget = nil
+                    Task { @MainActor in
+                        PermissionManager.openSettings(for: selectedTarget)
+                    }
+                }
+            }
         } message: {
             Text(errorMessage)
         }
@@ -397,20 +409,31 @@ struct RecordingView: View {
     
     private func requestPermissions() async {
         let microphoneGranted = await audioService.requestMicrophonePermission()
-        let speechGranted = await speechService.requestSpeechRecognitionPermission()
-        
         if !microphoneGranted {
-            showError("Microphone permission is required for recording")
+            showError("Microphone permission is required for recording", permissionTarget: .microphone)
+            return
         }
-        
+
+        let speechGranted = await speechService.requestSpeechRecognitionPermission()
         if !speechGranted {
-            showError("Speech recognition permission is required for verification")
+            showError("Speech recognition permission is required for verification", permissionTarget: .speechRecognition)
         }
     }
     
-    private func showError(_ message: String) {
-        errorMessage = message
-        showingError = true
+    private func showError(_ message: String, permissionTarget: PermissionManager.PermissionType? = nil) {
+        let updateState = {
+            errorMessage = message
+            permissionAlertTarget = permissionTarget
+            showingError = true
+        }
+
+        if Thread.isMainThread {
+            updateState()
+        } else {
+            DispatchQueue.main.async {
+                updateState()
+            }
+        }
     }
     
     private func monitorSpeechTimeoutForSmartStop() {

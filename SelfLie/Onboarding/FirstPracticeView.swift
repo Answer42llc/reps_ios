@@ -17,6 +17,7 @@ struct FirstPracticeView: View {
     @State private var speechService = SpeechService()
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var permissionAlertTarget: PermissionManager.PermissionType?
     @State private var similarity: Float = 0.0
     @State private var silentRecordingDetected = false
     
@@ -73,7 +74,18 @@ struct FirstPracticeView: View {
         }
         .fontDesign(.serif)
         .alert("Error", isPresented: $showingError) {
-            Button("OK") { }
+            Button("OK", role: .cancel) {
+                permissionAlertTarget = nil
+            }
+            if let target = permissionAlertTarget {
+                Button("Open Settings") {
+                    let selectedTarget = target
+                    permissionAlertTarget = nil
+                    Task { @MainActor in
+                        PermissionManager.openSettings(for: selectedTarget)
+                    }
+                }
+            }
         } message: {
             Text(errorMessage)
         }
@@ -271,10 +283,14 @@ struct FirstPracticeView: View {
         
         // Request permissions
         let microphoneGranted = await audioService.requestMicrophonePermission()
+        if !microphoneGranted {
+            showError("Microphone permission is required for practice session", permissionTarget: .microphone)
+            return
+        }
+
         let speechGranted = await speechService.requestSpeechRecognitionPermission()
-        
-        guard microphoneGranted && speechGranted else {
-            showError("Permissions required for practice session")
+        if !speechGranted {
+            showError("Speech recognition permission is required for practice session", permissionTarget: .speechRecognition)
             return
         }
         
@@ -564,9 +580,20 @@ struct FirstPracticeView: View {
         }
     }
     
-    private func showError(_ message: String) {
-        errorMessage = message
-        showingError = true
+    private func showError(_ message: String, permissionTarget: PermissionManager.PermissionType? = nil) {
+        let updateState = {
+            errorMessage = message
+            permissionAlertTarget = permissionTarget
+            showingError = true
+        }
+
+        if Thread.isMainThread {
+            updateState()
+        } else {
+            DispatchQueue.main.async {
+                updateState()
+            }
+        }
     }
 }
 

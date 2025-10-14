@@ -1,9 +1,18 @@
 import AVFoundation
 import Speech
 import UserNotifications
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @Observable
 class PermissionManager {
+
+    enum PermissionType {
+        case microphone
+        case speechRecognition
+        case notifications
+    }
     
     // MARK: - Microphone Permission (iOS 17+)
     static func requestMicrophonePermission() async -> Bool {
@@ -68,5 +77,17 @@ class PermissionManager {
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
         return settings.authorizationStatus
+    }
+
+    @MainActor
+    static func openSettings(for permission: PermissionType? = nil) {
+        #if canImport(UIKit)
+        _ = permission
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+
+        UIApplication.shared.open(settingsURL, options: [:], completionHandler: nil)
+        #endif
     }
 }

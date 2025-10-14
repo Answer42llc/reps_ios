@@ -17,6 +17,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
     @State private var speechService = SpeechService()
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var permissionAlertTarget: PermissionManager.PermissionType?
     @State private var similarity: Float = 0.0
     
     // Edit alert states
@@ -84,7 +85,17 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
         }
         .fontDesign(.serif)
         .alert("Error", isPresented: $showingError) {
-            Button("OK") { }
+            Button("OK", role: .cancel) {
+                permissionAlertTarget = nil
+            }
+            if let target = permissionAlertTarget {
+                Button("Open Settings") {
+                    permissionAlertTarget = nil
+                    Task { @MainActor in
+                        PermissionManager.openSettings(for: target)
+                    }
+                }
+            }
         } message: {
             Text(errorMessage)
         }
@@ -405,6 +416,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
             guard micGranted else {
                 await MainActor.run {
                     errorMessage = "Microphone permission is required to record your affirmation."
+                    permissionAlertTarget = .microphone
                     showingError = true
                 }
                 return
@@ -414,6 +426,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
             guard speechGranted else {
                 await MainActor.run {
                     errorMessage = "Speech recognition permission is required to verify your recording."
+                    permissionAlertTarget = .speechRecognition
                     showingError = true
                 }
                 return
@@ -445,6 +458,7 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
             } catch {
                 await MainActor.run {
                     errorMessage = "Failed to start recording: \(error.localizedDescription)"
+                    permissionAlertTarget = nil
                     showingError = true
                     recordingState = .idle
                 }
@@ -606,4 +620,3 @@ struct SpeakAndRecordView<DataModel: AffirmationDataProtocol>: View {
         showingAddAffirmation: .constant(true)
     )
 }
-

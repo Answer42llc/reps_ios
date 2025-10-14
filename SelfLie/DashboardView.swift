@@ -88,7 +88,7 @@ struct DashboardView: View {
                     HapticManager.shared.trigger(.mediumImpact)
                     handleAddAffirmationTapped()
                 }) {
-                    Image(systemName: "plus.circle.fill")
+                    Image(systemName: "plus")
                         .font(.title2)
                         .foregroundColor(.purple)
                     

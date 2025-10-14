@@ -289,6 +289,7 @@ struct PracticeSessionView: View {
     @State private var practiceState: PracticeState = .initial
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var permissionAlertTarget: PermissionManager.PermissionType?
     @State private var similarity: Float = 0.0
     @State private var silentRecordingDetected = false
     
@@ -526,8 +527,18 @@ struct PracticeSessionView: View {
             }
         }
         .alert("Error", isPresented: $showingError) {
-            Button("OK") {
+            Button("OK", role: .cancel) {
+                permissionAlertTarget = nil
                 onDismiss()
+            }
+            if let target = permissionAlertTarget {
+                Button("Open Settings") {
+                    let selectedTarget = target
+                    permissionAlertTarget = nil
+                    Task { @MainActor in
+                        PermissionManager.openSettings(for: selectedTarget)
+                    }
+                }
             }
         } message: {
             Text(errorMessage)
@@ -806,9 +817,15 @@ struct PracticeSessionView: View {
             let speechGranted = await speechService.requestSpeechRecognitionPermission()
             let permissionDuration = Date().timeIntervalSince(permissionStartTime) * 1000
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Permissions completed in \(String(format: "%.0fms", permissionDuration)) - Microphone: \(microphoneGranted), Speech: \(speechGranted)")
-            guard microphoneGranted && speechGranted else {
-                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Permission denied - cannot proceed with practice")
-                showError("Permissions required for practice session")
+            if !microphoneGranted {
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Microphone permission denied")
+                showError("Microphone permission is required for practice session", permissionTarget: .microphone)
+                return
+            }
+
+            if !speechGranted {
+                print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ❌ Speech recognition permission denied")
+                showError("Speech recognition permission is required for practice session", permissionTarget: .speechRecognition)
                 return
             }
         }
@@ -1237,9 +1254,20 @@ struct PracticeSessionView: View {
         }
     }
     
-    private func showError(_ message: String) {
-        errorMessage = message
-        showingError = true
+    private func showError(_ message: String, permissionTarget: PermissionManager.PermissionType? = nil) {
+        let updateState = {
+            errorMessage = message
+            permissionAlertTarget = permissionTarget
+            showingError = true
+        }
+
+        if Thread.isMainThread {
+            updateState()
+        } else {
+            DispatchQueue.main.async {
+                updateState()
+            }
+        }
     }
     
     private func restartPractice() async {
