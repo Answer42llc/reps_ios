@@ -130,7 +130,7 @@ struct AddAffirmationRecordingWrapper: View {
 #Preview {
     let previewPersistence = PersistenceController.preview
     let syncService = CloudSyncService.liveService(persistence: previewPersistence)
-    syncService.start()
+    syncService.activateSync()
 
     return AddAffirmationContainerView(showingAddAffirmation: .constant(true))
         .environment(\.managedObjectContext, previewPersistence.container.viewContext)

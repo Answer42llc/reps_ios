@@ -16,8 +16,12 @@ struct ContentView: View {
     @State private var notificationObserverAdded = false
     @Environment(CloudSyncService.self) private var cloudSyncService
     
-    // Debug mode - set to true to show debug controls
+    // Debug mode is enabled only for DEBUG builds
+#if DEBUG
     private let debugMode = true
+#else
+    private let debugMode = false
+#endif
     
     var body: some View {
         Group {
@@ -141,9 +145,11 @@ struct ContentView: View {
 
     private func updateSyncAccess() {
         let hasAccess = subscriptionManager.hasPremiumAccess
-        cloudSyncService.setSyncEnabled(hasAccess)
         if hasAccess {
+            cloudSyncService.activateSync()
             cloudSyncService.requestFullSync()
+        } else {
+            cloudSyncService.deactivateSync()
         }
     }
 }

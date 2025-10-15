@@ -192,7 +192,7 @@ struct OnboardingCompleteView: View {
 
     let previewPersistence = PersistenceController.preview
     let syncService = CloudSyncService.liveService(persistence: previewPersistence)
-    syncService.start()
+    syncService.activateSync()
 
     return OnboardingCompleteView(onboardingData: data)
         .environment(\.managedObjectContext, previewPersistence.container.viewContext)

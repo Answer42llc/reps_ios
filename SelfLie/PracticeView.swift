@@ -786,7 +786,7 @@ struct PracticeSessionView: View {
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Reset analysis state variables")
         if shouldAbortDueToCancellation("startPracticeFlow after reset") { return }
         
-        #if targetEnvironment(simulator)
+#if targetEnvironment(simulator)
         if privacyModeEnabled {
             // Simulator privacy mode: run highlight-only flow and complete
             await MainActor.run {
@@ -807,8 +807,9 @@ struct PracticeSessionView: View {
                 incrementCount()
             }
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Simulator flow completed")
+            return
         }
-        #else
+#else
         print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] Running on real device - requesting permissions")
         // Request permissions only when privacy mode is OFF
         if !privacyModeEnabled {
@@ -858,7 +859,7 @@ struct PracticeSessionView: View {
             let parallelDuration = Date().timeIntervalSince(parallelStartTime) * 1000
             print("⏰ [PracticeView] [\(elapsedTime(from: appearTime))] ✅ Parallel tasks completed in \(String(format: "%.0fms", parallelDuration))")
         }
-        #endif
+#endif
     }
     
     private func performRecordingWarmup() async {

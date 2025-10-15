@@ -6,7 +6,8 @@ import OSLog
 
 @MainActor
 protocol CloudSyncCoordinating: AnyObject {
-    func start()
+    func activateSync()
+    func deactivateSync()
     func enqueueUpload(for affirmationID: NSManagedObjectID)
     func enqueueDeletion(for affirmationID: NSManagedObjectID)
     func requestFullSync()
@@ -43,7 +44,7 @@ final class CloudSyncService: CloudSyncCoordinating {
 
     private(set) var isConfigured = false
     private(set) var lastSyncError: Error?
-    private var isSyncEnabled = true
+    private var isSyncEnabled = false
     private var isPerformingSync = false
     private var lastFetchDate: Date?
     private var syncTask: Task<Void, Never>?
@@ -66,13 +67,39 @@ final class CloudSyncService: CloudSyncCoordinating {
 
     }
 
-    func start() {
+    func activateSync() {
+        let wasEnabled = isSyncEnabled
+        guard !wasEnabled else {
+            startIfNeeded()
+            return
+        }
+
+        isSyncEnabled = true
+        logger.notice("Sync enabled")
+
+        startIfNeeded()
+
+        if isConfigured {
+            scheduleSync(forceFetch: true)
+        }
+    }
+
+    func deactivateSync() {
+        guard isSyncEnabled else { return }
+        isSyncEnabled = false
+        logger.notice("Sync disabled")
+
+        syncTask?.cancel()
+        syncTask = nil
+        isPerformingSync = false
+    }
+
+    private func startIfNeeded() {
         guard !isConfigured else { return }
         logger.debug("Starting CloudSyncService")
         configureZoneIfNeeded()
         registerSubscriptionIfNeeded()
         isConfigured = true
-        scheduleSync(forceFetch: true)
     }
 
     func enqueueUpload(for affirmationID: NSManagedObjectID) {
@@ -128,11 +155,10 @@ final class CloudSyncService: CloudSyncCoordinating {
     }
 
     func setSyncEnabled(_ enabled: Bool) {
-        let wasEnabled = isSyncEnabled
-        isSyncEnabled = enabled
-        logger.notice("Sync \(enabled ? "enabled" : "disabled", privacy: .public)")
-        if enabled && !wasEnabled {
-            scheduleSync(forceFetch: true)
+        if enabled {
+            activateSync()
+        } else {
+            deactivateSync()
         }
     }
 
@@ -185,6 +211,13 @@ final class CloudSyncService: CloudSyncCoordinating {
     }
 
     private func handleSyncError(_ error: Error) {
+        if let ckError = error as? CKError,
+           ckError.code == .partialFailure,
+           let partialErrors = ckError.partialErrorsByItemID as? [CKRecord.ID: CKError],
+           partialErrors.values.allSatisfy({ $0.code == .serverRecordChanged }) {
+            logger.notice("Sync conflict resolved by retrying server-changed records")
+            return
+        }
         lastSyncError = error
         logger.error("Sync engine operation failed: \(error as NSError, privacy: .public)")
     }

@@ -17,15 +17,9 @@ struct SelfLieApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
-        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         let service = CloudSyncService(
             context: persistenceController.container.viewContext
         )
-        if isRunningTests {
-            service.setSyncEnabled(false)
-        } else {
-            service.start()
-        }
         _cloudSyncService = State(initialValue: service)
 
         //初始化 RevenueCat
