@@ -9,9 +9,23 @@ import SwiftUI
 import CoreData
 import UserNotifications
 import RevenueCat
+import FirebaseCore
+import Clarity
+
+
+class AppDelegate: NSObject, UIApplicationDelegate {
+  func application(_ application: UIApplication,
+                   didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+      FirebaseApp.configure()
+      let clarityConfig = ClarityConfig(projectId: "tqih67yy8q")
+      ClaritySDK.initialize(config: clarityConfig)
+    return true
+  }
+}
 
 @main
 struct SelfLieApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     let persistenceController = PersistenceController.shared
     @State private var cloudSyncService: CloudSyncService
     @Environment(\.scenePhase) private var scenePhase
