@@ -19,9 +19,9 @@ struct SettingsView: View {
     @State private var notificationAlertMessage = ""
     @State private var notificationAlertTarget: PermissionManager.PermissionType?
 
-    private let supportEmail = "support@myreps.app"
-    private let termsURL = URL(string: "https://myreps.app/terms")!
-    private let privacyURL = URL(string: "https://myreps.app/privacy")!
+    private let supportEmail = "iosdev@answers42.org"
+    private let termsURL = URL(string: "https://www.answers42.org/kai/tos")!
+    private let privacyURL = URL(string: "https://www.answers42.org/kai/pp")!
 
     var body: some View {
         ScrollView {

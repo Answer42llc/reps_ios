@@ -114,36 +114,6 @@
             endingLineNumber = "683"
             landmarkName = "cardActionArea"
             landmarkType = "24">
-            <Locations>
-               <Location
-                  uuid = "9AA909A7-B86D-4F5D-8615-39F5347D84CF - 6af0bd5c640fa9e0"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "closure #2 () -&gt; SwiftUI.TupleView&lt;(SwiftUI.Image, SwiftUI.Text)&gt; in SelfLie.PracticeSessionView.cardActionArea.getter : some"
-                  moduleName = "SelfLie.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/lw/Projects/SelfLie/SelfLie/PracticeView.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "683"
-                  endingLineNumber = "683">
-               </Location>
-               <Location
-                  uuid = "9AA909A7-B86D-4F5D-8615-39F5347D84CF - 6af0bd5c640fa9e0"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "closure #2 () -&gt; SwiftUI.TupleView&lt;(SwiftUI.Image, SwiftUI.Text)&gt; in SelfLie.PracticeSessionView.cardActionArea.getter : some"
-                  moduleName = "SelfLie.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/lw/Projects/SelfLie/SelfLie/PracticeView.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "683"
-                  endingLineNumber = "683">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>
