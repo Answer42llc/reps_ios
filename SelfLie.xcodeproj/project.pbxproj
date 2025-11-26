@@ -486,7 +486,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = org.answers42.reps;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -533,7 +533,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = org.answers42.reps;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -683,7 +683,7 @@
 			repositoryURL = "https://github.com/microsoft/clarity-apps";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 3.2.0;
+				minimumVersion = 3.3.3;
 			};
 		};
 		C9AF6B272E9FB8D6005414CA /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
